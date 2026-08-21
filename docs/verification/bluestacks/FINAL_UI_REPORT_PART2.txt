@@ -1,0 +1,104 @@
+[22:55:54] === RETRY replace + sync ===
+[22:55:59] shot 30_recovered.png
+[22:56:00] tap 'Настройки' (30, 66, 246, 115)
+[22:56:03] tap 'Импорт JSON' (54, 915, 211, 943)
+[22:56:06] shot 30_picker_replace.png
+[22:56:07] picker: Загрузки | Изменено | mars_backup_1787341748162.json | 1,62 КБ | 22:50 | Открыть | Недавние | Загрузки
+[22:56:08] tap 'mars_backup_1787341748162.json' (99, 530, 278, 563)
+[22:56:11] shot 31_dialog1_replace.png
+[22:56:19] tap 'mars_backup_1787341748162.json' (99, 530, 278, 563)
+[22:56:27] dialog1: Загрузки | Изменено | mars_backup_1787341748162.json | 1,62 КБ | 22:50 | Открыть | Недавние | Загрузки
+[22:56:29] MISS 'Заменить' :: ['Загрузки', 'Изменено', 'mars_backup_1787341748162.json', '1,62\xa0КБ', '22:50', 'Открыть', 'Недавние', 'Загрузки']
+[22:56:30] shot 32_dialog2_replace.png
+[22:56:32] dialog2: Загрузки | Изменено | mars_backup_1787341748162.json | 1,62 КБ | 22:50 | Открыть | Недавние | Загрузки
+[22:56:34] MISS 'Заменить' :: ['Загрузки', 'Изменено', 'mars_backup_1787341748162.json', '1,62\xa0КБ', '22:50', 'Открыть', 'Недавние', 'Загрузки']
+[22:56:37] shot 33_after_replace.png
+[22:56:38] filesDir:
+
+[22:56:38] run-as ls:
+total 2884
+drwxrwxr-x  17 system system    1000 2026-08-21 22:40 .
+drwxrwxr-x  17 system system    1000 2026-08-21 22:40 ..
+dr-xr-xr-x  50 root   root         0 2026-08-21 22:40 acct
+lrwxrwxrwx   1 root   root        11 2026-08-21 22:40 bin -> /system/bin
+drwxrwxr-x   6 system system     240 2026-08-21 22:40 boot
+lrwxrwxrwx   1 root   root        50 2026-08-21 22:40 bugreports -> /data/user_de/0/com.android.shell/files/bugreports
+drwxrwx---   6 system cache      120 2026-08-21 22:40 cache
+lrwxrwxrwx   1 root   root        13 2026-08-21 22:40 charger -> /sbin/charger
+drwxr-xr-x   2 root   root         0 2026-08-21 22:40 config
+lrwxrwxrwx   1 root   root        17 2026-08-21 22:40 d -> /sys/kernel/debug
+drwxrwx--x  40 system system    4096 2026-08-21 22:40 data
+-rw-------   1 root   root      1088 2026-08-21 22:40 default.prop
+drwxr-xr-x  14 root   root      2900 2026-08-21 22:40 dev
+lrwxrwxrwx   1 root   root        11 2026-08-21 22:40 etc -> /system/etc
+-rw-r-----   1 root   root       753 2026-08-21 22:40 fstab.pie
+-rwxr-x---   1 root   root   2409568 2026-08-21 22:40 init
+-rwxr-x---   1 root   root      1064 2026-08-21 22:40 init.environ.rc
+-rwxr-x---   1 root   root      3064 2026-08-21 22:40 init.pie.rc
+-rwxr-x---   1 root   root     32464 2026-08-21 22:40 init.rc
+-rwxr-x---   1 root   root      7690 2026-08-21 22:40 init.usb.configfs.rc
+-rwxr-x---   1 root   root      5625 2026-08-21 22:40 init.usb.rc
+-rwxr-x---   1 root   root       511 2026-08-21 22:40 init.zygote32.rc
+-rwxr-x---   1 root   root       875 2026-08-21 22:40 init.zygote64_32.rc
+lrwxrwxrwx   1 root   root        10 2026-08-21 22:40 lib -> system/lib
+drwxr-xr-x  12 root   system     260 2026-08-21 22:40 mnt
+drwxr-xr-x   2 root   root       220 2026-08-21 22:40 odm
+drwxr-xr-x   2 root   root        40 2026-08-21 22:40 oem
+-rw-r--r--   1 root   root     23863 2026-08-21 22:40 plat_file_contexts
+-rw-r--r--   1 root   root      7212 2026-08-21 22:40 plat_hwservice_contexts
+-rw-r--r--   1 root   root      6687 2026-08-21 22:40 plat_property_contexts
+-rw-r--r--   1 root   root      1315 2026-08-21 22:40 plat_seapp_contexts
+-rw-r--r--   1 root   root     14057 2026-08-21 22:40 plat_service_contexts
+dr-xr-xr-x 230 root   root         0 2026-08-21 22:40 proc
+lrwxrwxrwx   1 root   root        15 2026-08-21 22:40 product -> /system/product
+drwx------   2 root   root        40 2026-08-18 20:35 root
+drwxr-x---   2 root   root       140 2026-08-21 22:40 sbin
+lrwxrwxrwx   1 root   root        21 2026-08-21 22:40 sdcard -> /storage/self/primary
+-rw-r--r--   1 root   root    365756 2026-08-21 22:40 sepolicy
+drwxr-xr-x   4 root   root       120 2026-08-21 22:40 storage
+dr-xr-xr-x  12 root   root         0 2026-08-21 22:40 sys
+drwxrwxr-x  19 system system    4096 2026-07-31 14:12 system
+-rw-r--r--   1 root   root       464 2026-08-21 22:40 ueventd.pie.rc
+-rw-r--r--   1 root   root      5425 2026-08-21 22:40 ueventd.rc
+lrwxrwxrwx   1 root   root        14 2026-08-21 22:40 vendor -> /system/vendor
+-rw-r--r--   1 root   root      7081 2026-08-21 22:40 vendor_file_contexts
+-rw-r--r--   1 root   root         0 2026-08-21 22:40 vendor_hwservice_contexts
+-rw-r--r--   1 root   root       392 2026-08-21 22:40 vendor_property_contexts
+-rw-r--r--   1 root   root         0 2026-08-21 22:40 vendor_seapp_contexts
+-rw-r--r--   1 root   root         0 2026-08-21 22:40 vendor_service_contexts
+-rw-r--r--   1 root   root        65 2026-08-21 22:40 vndservice_contexts
+
+[22:56:38] FAIL no pre_replace visible via run-as
+[22:56:41] MISS 'Настройки' :: ['Загрузки', 'Изменено', 'mars_backup_1787341748162.json', '1,62\xa0КБ', '22:50', 'Открыть', 'Недавние', 'Загрузки']
+[22:56:44] MISS 'Настройки' :: ['Загрузки', 'Изменено', 'mars_backup_1787341748162.json', '1,62\xa0КБ', '22:50', 'Открыть', 'Недавние', 'Загрузки']
+[22:56:47] MISS 'Синхронизация с ПК' :: ['Загрузки', 'Изменено', 'mars_backup_1787341748162.json', '1,62\xa0КБ', '22:50', 'Открыть', 'Недавние', 'Загрузки']
+[22:56:49] tap 'Настройки' (30, 66, 246, 115)
+[22:56:51] tap 'Синхронизация с ПК' (333, 663, 568, 691)
+[22:56:53] shot 34_sync.png
+[22:56:55] edits=3
+[22:57:18] tap 'Сохранить настройки' (57, 560, 306, 588)
+[22:57:20] shot 35_sync_saved.png
+[22:57:21] tap 'Проверить подключение' (54, 645, 341, 673)
+[22:57:25] shot 36_sync_health.png
+[22:57:26] health: Ключ сопряжения
+[22:57:26] health: Проверить подключение
+[22:57:26] health: Последняя синхронизация с телефона: ещё не было
+[22:57:26] health: Отправить копию на ПК
+[22:57:26] health: Подключение успешно. Последняя копия на ПК: 21.08.2026 22:15
+[22:57:26] health: При любой ошибке локальные данные телефона остаются нетронутыми.
+[22:57:27] tap 'Отправить копию на ПК' (57, 769, 331, 797)
+[22:57:32] shot 37_sync_sent.png
+[22:57:33] upload: Синхронизация с ПК
+[22:57:33] upload: Последняя синхронизация с телефона: 21.08.2026 22:57
+[22:57:33] upload: Резервная копия отправлена на ПК
+[22:57:33] upload: При любой ошибке локальные данные телефона остаются нетронутыми.
+[22:57:33] PASS PC backup: F:\1\Cursor\Mars\Mars\desktop-sync-server\data\backups\backup_20260821_225728.json
+[22:57:47] tap 'Сохранить настройки' (57, 560, 306, 588)
+[22:57:50] tap 'Отправить копию на ПК' (57, 769, 331, 797)
+[22:57:54] shot 38_wrong_key.png
+[22:57:55] PASS wrong key message
+[22:57:58] MISS 'Задачи' :: ['Синхронизация с ПК', 'Локальная сеть только. Без облака. Сначала запустите desktop-sync-server на компьютере.', '10.0.2.2', 'IP компьютера', '8765', 'Порт', 'WRONG_KEY_TEST_123', 'Ключ сопряжения', 'Сохранить настройки', 'Проверить подключение', 'Последняя синхронизация с телефона: 21.08.2026 22:57', 'Отправить копию на ПК', 'Восстановить с ПК', 'Неверный ключ сопряжения', 'При любой ошибке локальные данные телефона остаются нетронутыми.']
+[22:58:00] tap 'Задачи' (239, 1552, 297, 1576)
+[22:58:02] shot 39_tasks_final.png
+[22:58:03] final hits A=1 B=1
+[22:58:03] PASS tasks remain after wrong key

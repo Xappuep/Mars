@@ -1,0 +1,16 @@
+Generated: 2026-08-21 22:15:29
+PASS JSON: file created, readable, roots/subs/enh/settings/reminder present
+JSON path: F:\1\Cursor\Mars\Mars\docs\verification\mars_backup_verification.json
+PASS CSV: only root tasks, UTF-8 Russian intact
+CSV path: F:\1\Cursor\Mars\Mars\docs\verification\mars_tasks_verification.csv
+PASS merge-by-id model: second import of same file keeps 3 tasks (no dupes)
+PASS sync: server started on 127.0.0.1:8765 (LAN bind 0.0.0.0 in server.py)
+PASS sync: check connection (health) with pairing key
+PASS sync error wrong key: HTTP 401, body mentions key
+PASS sync error wrong port/IP: connection failed (<urlopen error [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение>)
+PASS sync: upload backup from 'phone' payload
+PC backup path: F:\1\Cursor\Mars\Mars\desktop-sync-server\data\backups\backup_20260821_221527.json
+PASS sync log: event logged without task text
+PASS sync: download latest backup
+PASS sync error server off: <urlopen error [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение>
+NOTE: phone local DB unchanged on these errors (client only mutates on Success)

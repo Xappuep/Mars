@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Иерархия задач — скриншоты</title>
+  <style>
+    :root { --bg:#0E0E10; --card:#22222A; --orange:#FF6A00; --peach:#FFB38A; --white:#fff; --muted:#B7B3AC; --light:#F7F2EC; }
+    body { margin:0; background:#18181c; color:var(--white); font-family:Georgia,serif; padding:24px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:28px; }
+    .label { font-family:system-ui; font-size:12px; color:var(--peach); text-transform:uppercase; margin-bottom:8px; }
+    .phone { width:360px; min-height:640px; background:linear-gradient(180deg,#0E0E10,#16161c); border-radius:28px; padding:18px 16px 24px; border:1px solid #2a2a33; }
+    .nav { display:flex; justify-content:space-around; margin-top:20px; font-family:system-ui; font-size:11px; color:var(--muted); padding-top:12px; border-top:1px solid #2a2a33; }
+    .nav .on { color:var(--orange); }
+    .chip { background:var(--card); border-radius:16px; padding:10px 12px; text-align:center; font-family:system-ui; min-width:64px; }
+    .chip b { display:block; font-size:18px; color:var(--white); }
+    .chip span { font-size:11px; color:var(--muted); }
+    .card { background:var(--light); color:#0E0E10; border-radius:20px; padding:14px; margin-top:10px; font-family:system-ui; }
+    .card-dark { background:var(--card); color:var(--white); border-radius:20px; padding:14px; margin-top:10px; font-family:system-ui; }
+    .progress { color:var(--orange); font-size:12px; margin-top:6px; font-weight:600; }
+    .progress-peach { color:var(--peach); font-size:13px; margin-top:4px; }
+    .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; }
+    .title { font-size:26px; font-weight:700; margin:6px 0 12px; }
+    .muted { color:var(--muted); font-family:system-ui; font-size:12px; }
+    .btn { border:1px solid var(--orange); color:var(--orange); border-radius:14px; padding:8px 12px; font-family:system-ui; font-size:13px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .sub { background:rgba(255,255,255,.05); border-radius:14px; padding:10px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div>
+      <div class="label">1. Общий список — одна основная задача</div>
+      <div class="phone" id="shot-list">
+        <div class="title">Задачи</div>
+        <div class="card-dark" style="opacity:.7;margin-bottom:10px">Поиск</div>
+        <div class="row" style="margin-bottom:12px"><span class="btn" style="background:var(--orange);color:#fff;border:none">Новая задача</span><span class="btn">Идеи и улучшения</span></div>
+        <div class="card-dark">
+          <div><span class="dot" style="background:var(--orange)"></span><strong>Подготовить отчёт</strong></div>
+          <div class="muted" style="margin-top:4px">В работе · Высокий · Работа</div>
+          <div class="progress-peach">Подзадачи: 1 из 3 выполнено</div>
+        </div>
+        <div class="muted" style="margin-top:16px">В списке только задачи верхнего уровня. Подзадачи сюда не попадают.</div>
+        <div class="nav"><span>Сегодня</span><span class="on">Задачи</span><span>Календарь</span><span>Статистика</span><span>Настройки</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="label">2. Основная задача с вложенными подзадачами</div>
+      <div class="phone" id="shot-detail">
+        <div class="row"><div class="title" style="margin:0">Задача</div><span style="color:var(--orange);font-family:system-ui">Изменить</span></div>
+        <div><span class="dot" style="background:var(--orange)"></span>В работе</div>
+        <div style="font-size:24px;font-weight:700;margin:8px 0">Подготовить отчёт</div>
+        <div class="muted">Приоритет: Высокий · Работа</div>
+        <div class="card-dark">
+          <div class="row"><strong>Подзадачи</strong><span class="btn">Добавить</span></div>
+          <div class="progress-peach">Подзадачи: 1 из 3 выполнено</div>
+          <div class="muted">Обязательные незавершённые подзадачи учитываются только в прогрессе этой задачи и не попадают в общий список.</div>
+          <div class="card"><span class="dot" style="background:#3DDC97"></span>Собрать цифры · Выполнено</div>
+          <div class="card"><span class="dot" style="background:var(--orange)"></span>Написать выводы · В работе</div>
+          <div class="card"><span class="dot" style="background:#6C8CFF"></span>Отправить руководителю · Новая</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="label">3. Главный экран — счётчик только основных задач</div>
+      <div class="phone" id="shot-today">
+        <div style="color:var(--orange);font-family:system-ui;font-size:13px;font-weight:700">Ежедневник Марса</div>
+        <div class="title">Привет. Сегодня 0 из 1 уже сделано.</div>
+        <div class="muted">21 августа 2026</div>
+        <div style="display:flex;gap:8px;margin:16px 0;font-family:system-ui">
+          <div class="chip"><b>1</b><span>Всего</span></div>
+          <div class="chip"><b style="color:#3DDC97">0</b><span>Готово</span></div>
+          <div class="chip"><b style="color:var(--orange)">1</b><span>В работе</span></div>
+          <div class="chip"><b style="color:#FF5A36">0</b><span>Просрочено</span></div>
+        </div>
+        <div class="muted" style="margin-bottom:8px">Счётчик «Всего: 1» — только основная задача. Три подзадачи не учитываются.</div>
+        <div class="card">
+          <div><span class="dot" style="background:var(--orange)"></span><strong>Подготовить отчёт</strong></div>
+          <div style="color:#666;font-size:12px;margin-top:4px">В работе · Высокий · Работа</div>
+          <div class="progress">Подзадачи: 1 из 3 выполнено</div>
+        </div>
+        <div class="nav"><span class="on">Сегодня</span><span>Задачи</span><span>Календарь</span><span>Статистика</span><span>Настройки</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

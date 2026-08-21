@@ -1,0 +1,56 @@
+{
+  "enhancements": [
+    {
+      "createdAt": 1787341641211,
+      "description": "",
+      "id": 1,
+      "priority": "normal",
+      "sourceTaskId": 1,
+      "status": "idea",
+      "title": "Ideya_grafik"
+    }
+  ],
+  "exportedAt": 1787341674937,
+  "settings": {
+    "defaultSnoozeMinutes": 30,
+    "eveningReminderEnabled": true,
+    "eveningReminderHour": 21,
+    "eveningReminderMinute": 0,
+    "morningReminderEnabled": true,
+    "morningReminderHour": 9,
+    "morningReminderMinute": 0,
+    "motivatorMode": "adaptive",
+    "userName": ""
+  },
+  "tasks": [
+    {
+      "category": "",
+      "createdAt": 1787341481071,
+      "description": "",
+      "dueDateEpochDay": 20686,
+      "id": 1,
+      "isDemo": false,
+      "nestingLevel": 0,
+      "postponeCount": 0,
+      "priority": "normal",
+      "status": "new",
+      "title": "Osnovnaya_A_otchet",
+      "updatedAt": 1787341481071
+    },
+    {
+      "category": "",
+      "createdAt": 1787341660222,
+      "description": "",
+      "dueDateEpochDay": 20686,
+      "id": 2,
+      "isDemo": false,
+      "nestingLevel": 0,
+      "postponeCount": 0,
+      "priority": "normal",
+      "status": "done",
+      "title": "Osnovnaya_B_korm",
+      "updatedAt": 1787341660222
+    }
+  ],
+  "version": 1
+}

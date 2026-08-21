@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MarsPlanner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/mars_graphite</item>
+        <item name="android:navigationBarColor">@color/mars_graphite</item>
+        <item name="android:windowBackground">@color/mars_graphite</item>
+        <item name="android:colorPrimary">@color/mars_orange</item>
+    </style>
+</resources>

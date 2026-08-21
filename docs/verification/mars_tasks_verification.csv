@@ -1,0 +1,3 @@
+id,title,description,due_date,due_time,priority,category,status,created_at,updated_at,postpone_count,postpone_reason,parent_task_id,nesting_level,related_to_task_id
+1,Подготовить отчёт,Основная задача с напоминанием,20321,600,high,Работа,in_progress,1787339708694,1787339713694,0,,,0,
+2,Купить корм Марсу,Вторая основная,20323,1080,normal,Дом,done,1787339698694,1787339717694,1,магазин закрыт,,0,
