@@ -103,10 +103,12 @@ import com.mars.planner.reminder.nextReminderMillis
 import com.mars.planner.sync.SyncClient
 import com.mars.planner.sync.SyncResult
 import com.mars.planner.ui.components.FilterChipRow
-import com.mars.planner.ui.components.MarsAvatar
+import com.mars.planner.ui.components.MarsEmptyState
+import com.mars.planner.ui.components.MarsMoodCard
 import com.mars.planner.ui.components.MarsReactionBanner
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
+import com.mars.planner.ui.components.ProvideReduceAnimations
 import com.mars.planner.ui.components.SummaryChip
 import com.mars.planner.ui.components.TaskCard
 import com.mars.planner.ui.theme.MarsCardDark
@@ -362,6 +364,9 @@ fun MarsApp() {
         Routes.Today, Routes.Tasks, Routes.Calendar, Routes.Stats, Routes.Settings
     )
 
+    val settingsGlobal by vm.settings.collectAsState()
+
+    ProvideReduceAnimations(settingsGlobal.reduceAnimations) {
     Scaffold(
         containerColor = MarsGraphite,
         bottomBar = {
@@ -420,6 +425,7 @@ fun MarsApp() {
             }
         }
     }
+    }
 }
 
 @Composable
@@ -440,7 +446,7 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
     val tasks by vm.todayTasks.collectAsState()
     val allTasks by vm.allTasks.collectAsState()
     val summary by vm.daySummary.collectAsState()
-    val mood by vm.mood.collectAsState()
+    val moodByLogic by vm.mood.collectAsState()
     val settings by vm.settings.collectAsState()
     val reaction = vm.reaction
     var filter by remember { mutableStateOf<TaskStatus?>(null) }
@@ -449,6 +455,16 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
     }
     val filtered = tasks.filter { filter == null || it.status == filter }
     val context = LocalContext.current
+    // QA: adb am start … --es mars_mood mars_postponed (или done/working/supportive/…)
+    val activity = context as? android.app.Activity
+    val moodOverride = activity?.intent?.getStringExtra("mars_mood")?.let { raw ->
+        MarsMood.entries.find {
+            it.assetBase.equals(raw, ignoreCase = true) ||
+                it.name.equals(raw, ignoreCase = true) ||
+                it.assetBase.removePrefix("mars_").equals(raw, ignoreCase = true)
+        }
+    }
+    val mood = moodOverride ?: moodByLogic
     val scope = rememberCoroutineScope()
     var voiceMessage by remember { mutableStateOf<String?>(null) }
     val voiceHelper = remember { VoiceInputHelper(context) }
@@ -496,31 +512,15 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 Text(dateLabel, color = MarsMuted, fontSize = 14.sp)
             }
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    MarsAvatar(mood = mood, size = 96.dp)
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text("Настроение дня", color = MarsMuted, fontSize = 12.sp)
-                        Text(
-                            when (mood) {
-                                MarsMood.DONE -> "Марс доволен"
-                                MarsMood.WORKING -> "Марс сосредоточен"
-                                MarsMood.POSTPONED -> "Марс озадачен"
-                                MarsMood.OVERDUE -> "Марс ждёт решения"
-                                MarsMood.STRICT -> "Марс настроен серьёзно"
-                                MarsMood.SUPPORTIVE -> "Марс поддерживает"
-                                MarsMood.DEFAULT -> "Марс спокоен"
-                            },
-                            color = MarsWhite,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp
-                        )
-                    }
-                }
+                MarsMoodCard(mood = mood)
             }
             if (reaction != null) {
                 item {
-                    MarsReactionBanner(reaction.mood, reaction.message, Modifier.clickable { vm.clearReaction() })
+                    MarsReactionBanner(
+                        reaction.mood,
+                        reaction.message,
+                        Modifier.clickable { vm.clearReaction() }
+                    )
                 }
             }
             item {
@@ -546,7 +546,10 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
             }
             if (filtered.isEmpty()) {
                 item {
-                    Text("На сегодня задач нет. Добавь первую — Марс рядом.", color = MarsMuted)
+                    MarsEmptyState(
+                        mood = if (summary.overdue > 0) MarsMood.OVERDUE else MarsMood.DEFAULT,
+                        message = "На сегодня задач нет"
+                    )
                 }
             }
             items(filtered, key = { it.id }) { task ->
@@ -561,7 +564,8 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 TaskCard(
                     task = task,
                     onClick = { nav.navigate(Routes.detail(task.id)) },
-                    subtaskProgress = progress
+                    subtaskProgress = progress,
+                    modifier = Modifier
                 )
             }
             }

@@ -26,6 +26,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +37,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,11 +55,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.mars.planner.domain.model.EnhancementIdea
 import com.mars.planner.domain.model.EnhancementStatus
+import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.MotivatorMode
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskPriority
@@ -64,12 +71,14 @@ import com.mars.planner.export.BackupCodec
 import com.mars.planner.motivator.MarsMotivator
 import com.mars.planner.reminder.nextReminderMillis
 import com.mars.planner.sync.SyncResult
+import com.mars.planner.ui.components.MarsEmptyState
 import com.mars.planner.ui.components.MarsPrimaryButton
 import com.mars.planner.ui.components.MarsReactionBanner
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.StatusDot
 import com.mars.planner.ui.components.TaskCard
+import com.mars.planner.ui.components.redactSyncSecrets
 import com.mars.planner.ui.theme.MarsCardDark
 import com.mars.planner.ui.theme.MarsMuted
 import com.mars.planner.ui.theme.MarsOrange
@@ -135,6 +144,14 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 88.dp)
             ) {
+                if (filtered.isEmpty()) {
+                    item {
+                        MarsEmptyState(
+                            mood = MarsMood.DEFAULT,
+                            message = if (query.isBlank()) "Пока нет задач" else "Ничего не найдено"
+                        )
+                    }
+                }
                 items(filtered, key = { it.id }) { task ->
                     val subs = allTasks.filter { it.parentTaskId == task.id }
                     val progress = if (subs.isEmpty()) {
@@ -146,7 +163,8 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
                     TaskCard(
                         task,
                         onClick = { nav.navigate(Routes.detail(task.id)) },
-                        subtaskProgress = progress
+                        subtaskProgress = progress,
+                        modifier = Modifier
                     )
                 }
             }
@@ -235,9 +253,16 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
         Spacer(modifier = Modifier.height(16.dp))
         Text("Задачи дня", color = MarsWhite, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(8.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(dayTasks) { task ->
-                TaskCard(task, onClick = { nav.navigate(Routes.detail(task.id)) })
+        if (dayTasks.isEmpty()) {
+            MarsEmptyState(
+                mood = MarsMood.DEFAULT,
+                message = "В этот день задач нет"
+            )
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(dayTasks, key = { it.id }) { task ->
+                    TaskCard(task, onClick = { nav.navigate(Routes.detail(task.id)) })
+                }
             }
         }
     }
@@ -341,6 +366,31 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
         MarsSecondaryButton("Синхронизация с ПК", onClick = { nav.navigate(Routes.Sync) }, modifier = Modifier.fillMaxWidth())
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(MarsCardDark)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Уменьшить анимации", color = MarsWhite, fontWeight = FontWeight.Medium)
+                Text("Мгновенная смена состояний без декоративного движения", color = MarsMuted, fontSize = 12.sp)
+            }
+            Switch(
+                checked = settings.reduceAnimations,
+                onCheckedChange = { v ->
+                    scope.launch { vm.updateSettings { it.copy(reduceAnimations = v) } }
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MarsWhite,
+                    checkedTrackColor = MarsOrange,
+                    uncheckedThumbColor = MarsMuted,
+                    uncheckedTrackColor = MarsCardDark
+                )
+            )
+        }
         MarsPrimaryButton("Экспорт JSON", onClick = {
             scope.launch {
                 val json = vm.exportJson()
@@ -474,7 +524,29 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
         )
         OutlinedTextField(host, { host = it }, label = { Text("IP компьютера") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
         OutlinedTextField(port, { port = it.filter { ch -> ch.isDigit() } }, label = { Text("Порт") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-        OutlinedTextField(key, { key = it }, label = { Text("Ключ сопряжения") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+        var keyVisible by remember { mutableStateOf(false) }
+        OutlinedTextField(
+            value = key,
+            onValueChange = { key = it },
+            label = { Text("Ключ сопряжения") },
+            modifier = Modifier.fillMaxWidth(),
+            colors = fieldColors,
+            singleLine = true,
+            visualTransformation = if (keyVisible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(onClick = { keyVisible = !keyVisible }) {
+                    Icon(
+                        imageVector = if (keyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (keyVisible) "Скрыть ключ" else "Показать ключ",
+                        tint = MarsMuted
+                    )
+                }
+            }
+        )
         MarsPrimaryButton("Сохранить настройки", onClick = {
             scope.launch {
                 vm.updateSettings {
@@ -493,13 +565,14 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     it.copy(syncHost = host.trim(), syncPort = port.toIntOrNull() ?: 8765, syncKey = key.trim())
                 }
                 val info = withContext(Dispatchers.IO) { vm.syncCheck() }
-                status = if (info.ok) {
+                val raw = if (info.ok) {
                     val last = info.lastBackupAt?.let {
                         Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())
                             .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
                     } ?: "нет"
                     "${info.message}. Последняя копия на ПК: $last"
                 } else info.message
+                status = redactSyncSecrets(raw, key.trim())
             }
         })
         val lastSync = if (settings.lastSyncAt > 0) {
@@ -510,11 +583,12 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
         MarsPrimaryButton("Отправить копию на ПК", onClick = {
             scope.launch {
                 val result = withContext(Dispatchers.IO) { vm.syncUpload() }
-                status = when (result) {
+                val raw = when (result) {
                     is SyncResult.Success -> result.message
                     is SyncResult.Error -> result.message
                     is SyncResult.Conflict -> "Конфликт данных"
                 }
+                status = redactSyncSecrets(raw, key.trim())
             }
         })
         MarsSecondaryButton("Восстановить с ПК", onClick = {
@@ -532,7 +606,7 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                         downloadedJson = json
                         conflictChoice = true
                     }
-                    is SyncResult.Error -> status = result.message
+                    is SyncResult.Error -> status = redactSyncSecrets(result.message, key.trim())
                     else -> status = "Не удалось получить копию"
                 }
             }
@@ -598,22 +672,29 @@ internal fun IdeasScreen(vm: AppViewModel, nav: NavHostController) {
             Text("Идеи и улучшения", color = MarsWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(modifier = Modifier.height(12.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(ideas, key = { it.id }) { idea ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(MarsCardDark)
-                        .padding(14.dp)
-                ) {
-                    Text(idea.title, color = MarsWhite, fontWeight = FontWeight.SemiBold)
-                    Text(idea.status.labelRu, color = MarsPeach, fontSize = 12.sp)
-                    if (idea.description.isNotBlank()) {
-                        Text(idea.description, color = MarsMuted, fontSize = 13.sp)
-                    }
-                    TextButton(onClick = { nav.navigate(Routes.detail(idea.sourceTaskId)) }) {
-                        Text("К исходной задаче", color = MarsOrange)
+        if (ideas.isEmpty()) {
+            MarsEmptyState(
+                mood = MarsMood.SUPPORTIVE,
+                message = "Идей пока нет"
+            )
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(ideas, key = { it.id }) { idea ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MarsCardDark)
+                            .padding(14.dp)
+                    ) {
+                        Text(idea.title, color = MarsWhite, fontWeight = FontWeight.SemiBold)
+                        Text(idea.status.labelRu, color = MarsPeach, fontSize = 12.sp)
+                        if (idea.description.isNotBlank()) {
+                            Text(idea.description, color = MarsMuted, fontSize = 13.sp)
+                        }
+                        TextButton(onClick = { nav.navigate(Routes.detail(idea.sourceTaskId)) }) {
+                            Text("К исходной задаче", color = MarsOrange)
+                        }
                     }
                 }
             }

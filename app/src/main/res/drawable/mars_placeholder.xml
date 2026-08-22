@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Нейтральная геометрическая заглушка без эмодзи и без чужого кота. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <path
+        android:fillColor="#2A2A32"
+        android:pathData="M24,16h80c8.8,0 16,7.2 16,16v64c0,8.8 -7.2,16 -16,16h-80c-8.8,0 -16,-7.2 -16,-16v-64c0,-8.8 7.2,-16 16,-16z" />
+    <path
+        android:fillColor="#E67E22"
+        android:fillAlpha="0.35"
+        android:pathData="M64,28c19.9,0 36,16.1 36,36s-16.1,36 -36,36 -36,-16.1 -36,-36 16.1,-36 36,-36z" />
+    <path
+        android:fillColor="#F5C7A9"
+        android:pathData="M52,58c0,-6.6 5.4,-12 12,-12s12,5.4 12,12v8c0,6.6 -5.4,12 -12,12s-12,-5.4 -12,-12z" />
+    <path
+        android:fillColor="#E67E22"
+        android:pathData="M58,88h12c2.2,0 4,1.8 4,4s-1.8,4 -4,4h-12c-2.2,0 -4,-1.8 -4,-4s1.8,-4 4,-4z" />
+</vector>

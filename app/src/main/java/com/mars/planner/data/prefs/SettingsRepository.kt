@@ -29,7 +29,9 @@ data class AppSettings(
     val syncKey: String = "",
     val lastSyncAt: Long = 0L,
     val userName: String = "",
-    val demoLoaded: Boolean = false
+    val demoLoaded: Boolean = false,
+    /** Декоративные анимации UI: при true — мгновенная смена состояний. */
+    val reduceAnimations: Boolean = false
 )
 
 class SettingsRepository(private val context: Context) {
@@ -48,6 +50,7 @@ class SettingsRepository(private val context: Context) {
         val lastSync = longPreferencesKey("last_sync_at")
         val userName = stringPreferencesKey("user_name")
         val demoLoaded = booleanPreferencesKey("demo_loaded")
+        val reduceAnimations = booleanPreferencesKey("reduce_animations")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -65,7 +68,8 @@ class SettingsRepository(private val context: Context) {
             syncKey = p[Keys.syncKey] ?: "",
             lastSyncAt = p[Keys.lastSync] ?: 0L,
             userName = p[Keys.userName] ?: "",
-            demoLoaded = p[Keys.demoLoaded] ?: false
+            demoLoaded = p[Keys.demoLoaded] ?: false,
+            reduceAnimations = p[Keys.reduceAnimations] ?: false
         )
     }
 
@@ -85,7 +89,8 @@ class SettingsRepository(private val context: Context) {
                 syncKey = prefs[Keys.syncKey] ?: "",
                 lastSyncAt = prefs[Keys.lastSync] ?: 0L,
                 userName = prefs[Keys.userName] ?: "",
-                demoLoaded = prefs[Keys.demoLoaded] ?: false
+                demoLoaded = prefs[Keys.demoLoaded] ?: false,
+                reduceAnimations = prefs[Keys.reduceAnimations] ?: false
             )
             val next = transform(current)
             prefs[Keys.motivator] = next.motivatorMode.key
@@ -102,6 +107,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.lastSync] = next.lastSyncAt
             prefs[Keys.userName] = next.userName
             prefs[Keys.demoLoaded] = next.demoLoaded
+            prefs[Keys.reduceAnimations] = next.reduceAnimations
         }
     }
 }

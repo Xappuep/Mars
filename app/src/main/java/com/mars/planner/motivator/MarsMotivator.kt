@@ -84,7 +84,7 @@ object MarsMotivator {
             mode == MotivatorMode.OFF
         return if (soft || postponeCount <= 1) {
             MarsReaction(
-                MarsMood.SUPPORTIVE,
+                MarsMood.POSTPONED,
                 "Ничего страшного. Выбери реальное новое время — я напомню."
             )
         } else {
