@@ -21,11 +21,15 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,21 +47,29 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.os.Build
 import com.mars.planner.R
 import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.TaskItem
@@ -88,14 +100,70 @@ fun TaskStatus.color(): Color = when (this) {
     TaskStatus.NEW -> StatusNew
 }
 
+fun MarsMood.previewLabelRu(): String = when (this) {
+    MarsMood.DEFAULT -> "Спокоен"
+    MarsMood.DONE -> "Доволен"
+    MarsMood.WORKING -> "Сосредоточен"
+    MarsMood.POSTPONED -> "Озадачен"
+    MarsMood.OVERDUE -> "Просрочено"
+    MarsMood.SUPPORTIVE -> "Поддерживает"
+    MarsMood.STRICT -> "Строгий"
+}
+
+data class MarsPreviewOption(val mood: MarsMood, val label: String)
+
+val marsPreviewOptions: List<MarsPreviewOption> = listOf(
+    MarsPreviewOption(MarsMood.DEFAULT, "Спокоен"),
+    MarsPreviewOption(MarsMood.DONE, "Доволен"),
+    MarsPreviewOption(MarsMood.WORKING, "Сосредоточен"),
+    MarsPreviewOption(MarsMood.POSTPONED, "Озадачен"),
+    MarsPreviewOption(MarsMood.OVERDUE, "Просрочено"),
+    MarsPreviewOption(MarsMood.SUPPORTIVE, "Поддерживает"),
+    MarsPreviewOption(MarsMood.STRICT, "Строгий")
+)
+
 fun MarsMood.labelRu(): String = when (this) {
+    MarsMood.DEFAULT -> "Марс спокоен"
     MarsMood.DONE -> "Марс доволен"
     MarsMood.WORKING -> "Марс сосредоточен"
     MarsMood.POSTPONED -> "Марс озадачен"
     MarsMood.OVERDUE -> "Марс ждёт решения"
     MarsMood.STRICT -> "Марс настроен серьёзно"
     MarsMood.SUPPORTIVE -> "Марс поддерживает"
-    MarsMood.DEFAULT -> "Марс спокоен"
+}
+
+private fun loadMarsBitmap(context: Context, mood: MarsMood, targetPx: Int): Bitmap? {
+    val assetPath = "mars/${mood.assetBase}.webp"
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(context.assets, assetPath)
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val maxSide = maxOf(info.size.width, info.size.height).coerceAtLeast(1)
+                var sample = 1
+                while (maxSide / sample > targetPx * 2) sample *= 2
+                decoder.setTargetSize(
+                    (info.size.width / sample).coerceAtLeast(1),
+                    (info.size.height / sample).coerceAtLeast(1)
+                )
+            }
+        } else {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.assets.open(assetPath).use { BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            val maxSide = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+            while (maxSide / sample > targetPx * 2) sample *= 2
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            context.assets.open(assetPath).use { BitmapFactory.decodeStream(it, null, opts) }
+        }
+    } catch (_: IOException) {
+        null
+    } catch (_: OutOfMemoryError) {
+        null
+    }
 }
 
 @Composable
@@ -134,36 +202,11 @@ fun MarsAvatar(
     val context = LocalContext.current
     val reduce = LocalReduceAnimations.current
     val bitmap = remember(mood, size) {
-        val base = mood.assetBase
-        // Реальные ассеты — PNG; webp/jpg остаются запасными вариантами.
-        val candidates = listOf("$base.png", "$base.webp", "$base.jpg")
         val targetPx = with(context.resources.displayMetrics) {
             (size.value * density).toInt().coerceAtLeast(64)
         }
-        candidates.firstNotNullOfOrNull { name ->
-            try {
-                // Сначала размеры, затем downsample — портреты ~2MB иначе легко съедают память.
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.assets.open("mars/$name").use { BitmapFactory.decodeStream(it, null, bounds) }
-                var sample = 1
-                val maxSide = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
-                while (maxSide / sample > targetPx * 2) sample *= 2
-                val opts = BitmapFactory.Options().apply {
-                    inSampleSize = sample
-                    inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
-                }
-                context.assets.open("mars/$name").use { BitmapFactory.decodeStream(it, null, opts) }
-            } catch (_: IOException) {
-                null
-            } catch (_: OutOfMemoryError) {
-                null
-            }
-        }
+        loadMarsBitmap(context, mood, targetPx)
     }
-
-    // Портреты 1122×1402: лёгкий сдвиг вверх, чтобы уши/глаза/подбородок
-    // оставались в квадратном кадре при ContentScale.Crop.
-    val faceAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = -0.14f)
 
     val content: @Composable () -> Unit = {
         Box(
@@ -178,9 +221,11 @@ fun MarsAvatar(
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "Марс",
-                    contentScale = ContentScale.Crop,
-                    alignment = faceAlignment,
-                    modifier = Modifier.matchParentSize()
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.Center,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(4.dp)
                 )
             } else {
                 Image(
@@ -210,6 +255,133 @@ fun MarsAvatar(
             content()
         }
     }
+}
+
+@Composable
+fun MarsBackgroundPresence(
+    mood: MarsMood,
+    presenceAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    val reduce = LocalReduceAnimations.current
+    if (!reduce) {
+        AnimatedContent(
+            targetState = mood,
+            transitionSpec = {
+                (fadeIn(tween(320)) + scaleIn(initialScale = 0.98f, animationSpec = tween(320)))
+                    .togetherWith(fadeOut(tween(220)))
+            },
+            label = "marsPresenceMood",
+            modifier = modifier
+        ) { activeMood ->
+            MarsBackgroundPresenceLayer(
+                mood = activeMood,
+                presenceAlpha = presenceAlpha,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    } else {
+        MarsBackgroundPresenceLayer(
+            mood = mood,
+            presenceAlpha = presenceAlpha,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun MarsBackgroundPresenceLayer(
+    mood: MarsMood,
+    presenceAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val reduce = LocalReduceAnimations.current
+    val density = LocalDensity.current
+    val animatedAlpha by animateFloatAsState(
+        targetValue = presenceAlpha.coerceIn(0f, 1f),
+        animationSpec = if (reduce) tween(0) else tween(900),
+        label = "marsPresenceAlpha"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        val targetPx = remember(maxHeight, density) {
+            with(density) { (maxHeight * 0.55f).roundToPx().coerceAtLeast(320) }
+        }
+        val bitmap = remember(mood, targetPx) {
+            loadMarsBitmap(context, mood, targetPx)
+        }
+        val aspect = remember(bitmap) {
+            bitmap?.let { it.width.toFloat() / it.height.toFloat() } ?: (1122f / 1402f)
+        }
+        val maxCatWidth = maxWidth * 0.44f
+        val maxCatHeight = maxHeight * 0.88f
+        var catHeight = maxCatHeight
+        var catWidth = catHeight * aspect
+        if (catWidth > maxCatWidth) {
+            catWidth = maxCatWidth
+            catHeight = catWidth / aspect
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 4.dp)
+                .width(catWidth)
+                .height(catHeight)
+                .alpha(animatedAlpha),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.BottomCenter,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Image(
+                    painter = painterResource(R.drawable.mars_placeholder),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.BottomCenter,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MarsPresenceReaction(
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    if (message.isBlank()) return
+    val reduce = LocalReduceAnimations.current
+    val appear = remember { Animatable(if (reduce) 1f else 0f) }
+    LaunchedEffect(message) {
+        if (reduce) {
+            appear.snapTo(1f)
+        } else {
+            appear.snapTo(0f)
+            appear.animateTo(1f, tween(280))
+        }
+    }
+    Text(
+        text = message,
+        color = MarsWhite.copy(alpha = 0.92f),
+        fontSize = 13.sp,
+        lineHeight = 17.sp,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .graphicsLayer { alpha = appear.value }
+            .clip(RoundedCornerShape(14.dp))
+            .background(MarsCardDark.copy(alpha = 0.88f))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    )
 }
 
 @Composable
@@ -246,23 +418,34 @@ fun MarsMoodCard(
 fun MarsEmptyState(
     mood: MarsMood,
     message: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showMarsImage: Boolean = true
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(MarsCardDark)
-            .padding(vertical = 28.dp, horizontal = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .then(
+                if (showMarsImage) {
+                    Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MarsCardDark)
+                        .padding(vertical = 28.dp, horizontal = 20.dp)
+                } else {
+                    Modifier.padding(vertical = 20.dp, horizontal = 4.dp)
+                }
+            ),
+        horizontalAlignment = if (showMarsImage) Alignment.CenterHorizontally else Alignment.Start
     ) {
-        MarsAvatar(mood = mood, size = 96.dp, animateChange = false)
-        Spacer(modifier = Modifier.height(14.dp))
+        if (showMarsImage) {
+            MarsAvatar(mood = mood, size = 96.dp, animateChange = false)
+            Spacer(modifier = Modifier.height(14.dp))
+        }
         Text(
             text = message,
             color = MarsMuted,
             fontSize = 15.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            textAlign = if (showMarsImage) TextAlign.Center else TextAlign.Start
         )
     }
 }

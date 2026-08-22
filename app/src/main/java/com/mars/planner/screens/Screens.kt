@@ -71,14 +71,20 @@ import com.mars.planner.export.BackupCodec
 import com.mars.planner.motivator.MarsMotivator
 import com.mars.planner.reminder.nextReminderMillis
 import com.mars.planner.sync.SyncResult
+import com.mars.planner.ui.components.MarsBackgroundPresence
 import com.mars.planner.ui.components.MarsEmptyState
 import com.mars.planner.ui.components.MarsPrimaryButton
 import com.mars.planner.ui.components.MarsReactionBanner
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.StatusDot
+import com.mars.planner.ui.components.SummaryChip
 import com.mars.planner.ui.components.TaskCard
+import com.mars.planner.ui.components.marsPreviewOptions
+import com.mars.planner.ui.components.labelRu
+import com.mars.planner.ui.components.previewLabelRu
 import com.mars.planner.ui.components.redactSyncSecrets
+import com.mars.planner.ui.theme.MarsGraphite
 import com.mars.planner.ui.theme.MarsCardDark
 import com.mars.planner.ui.theme.MarsMuted
 import com.mars.planner.ui.theme.MarsOrange
@@ -86,6 +92,7 @@ import com.mars.planner.ui.theme.MarsPeach
 import com.mars.planner.ui.theme.MarsWhite
 import com.mars.planner.ui.theme.StatusDone
 import com.mars.planner.ui.theme.StatusNotDone
+import com.mars.planner.ui.theme.StatusProgress
 import com.mars.planner.voice.VoiceInputHelper
 import com.mars.planner.voice.VoiceResult
 import kotlinx.coroutines.Dispatchers
@@ -365,6 +372,11 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                 Text(mode.labelRu, color = MarsWhite)
             }
         }
+        MarsSecondaryButton(
+            "Образы Марса",
+            onClick = { nav.navigate(Routes.MarsImages) },
+            modifier = Modifier.fillMaxWidth()
+        )
         MarsSecondaryButton("Синхронизация с ПК", onClick = { nav.navigate(Routes.Sync) }, modifier = Modifier.fillMaxWidth())
         Row(
             modifier = Modifier
@@ -697,6 +709,153 @@ internal fun IdeasScreen(vm: AppViewModel, nav: NavHostController) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MarsImagesPreviewScreen(nav: NavHostController) {
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+    val moodFromIntent = activity?.intent?.getStringExtra("mars_preview_mood")?.let { raw ->
+        MarsMood.entries.find {
+            it.assetBase.equals(raw, ignoreCase = true) ||
+                it.name.equals(raw, ignoreCase = true) ||
+                it.assetBase.removePrefix("mars_").equals(raw, ignoreCase = true)
+        }
+    }
+    var selectedMood by remember { mutableStateOf(moodFromIntent ?: MarsMood.DEFAULT) }
+    LaunchedEffect(moodFromIntent) {
+        if (moodFromIntent != null) selectedMood = moodFromIntent
+    }
+    val dateLabel = remember {
+        LocalDate.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")))
+    }
+    val pagePad = Modifier.padding(horizontal = 20.dp)
+    val contentWidth = Modifier.fillMaxWidth(0.64f)
+
+    ScreenBackground {
+        Box(modifier = Modifier.fillMaxSize()) {
+            MarsBackgroundPresence(
+                mood = selectedMood,
+                presenceAlpha = 0.30f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 76.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 8.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { nav.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = MarsWhite)
+                    }
+                    Text(
+                        text = "Образы Марса",
+                        color = MarsWhite,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = "Предпросмотр. Задачи и статистика не меняются.",
+                    color = MarsMuted,
+                    fontSize = 12.sp,
+                    modifier = pagePad
+                )
+                Column(modifier = pagePad.padding(top = 4.dp)) {
+                    Text("Ежедневник Марса", color = MarsOrange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Сегодня", color = MarsWhite, fontWeight = FontWeight.Bold, fontSize = 32.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(dateLabel, color = MarsMuted, fontSize = 14.sp)
+                }
+                Row(modifier = pagePad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SummaryChip("Всего", 2, MarsWhite)
+                    SummaryChip("Готово", 0, StatusDone)
+                    SummaryChip("В работе", 1, StatusProgress)
+                    SummaryChip("Просрочено", 0, StatusNotDone)
+                }
+                Column(
+                    modifier = pagePad
+                        .then(contentWidth)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MarsCardDark)
+                        .padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusDot(TaskStatus.IN_PROGRESS)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Пример задачи", color = MarsWhite, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("В работе · Обычный", color = MarsMuted, fontSize = 12.sp)
+                }
+                Column(modifier = pagePad.then(contentWidth)) {
+                    Text("Состояние", color = MarsMuted, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = selectedMood.previewLabelRu(),
+                        color = MarsWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 26.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(selectedMood.labelRu(), color = MarsMuted, fontSize = 14.sp)
+                }
+                Text(
+                    text = "Выберите образ",
+                    color = MarsWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = pagePad.padding(top = 4.dp)
+                )
+                marsPreviewOptions.chunked(2).forEach { rowOptions ->
+                    Row(
+                        modifier = pagePad.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowOptions.forEach { option ->
+                            val active = selectedMood == option.mood
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(if (active) MarsOrange.copy(alpha = 0.28f) else MarsCardDark)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (active) MarsOrange else Color(0xFF30303A),
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable { selectedMood = option.mood }
+                                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = option.label,
+                                    color = if (active) MarsWhite else MarsMuted,
+                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                        if (rowOptions.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                MarsSecondaryButton(
+                    text = "Вернуться к автоматическому режиму",
+                    onClick = { nav.popBackStack() },
+                    modifier = pagePad.padding(top = 8.dp)
+                )
             }
         }
     }

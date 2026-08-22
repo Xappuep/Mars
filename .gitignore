@@ -1,19 +1,69 @@
+# Gradle / Android build
 .gradle/
 build/
 **/build/
 local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+
+# IDE
 .idea/
 *.iml
 .DS_Store
-captures/
-.externalNativeBuild/
-.cxx/
+
+# APK и артефакты сборки
 *.apk
 *.ap_
+*.aab
 *.dex
+
+# Keystore и секреты подписи
+*.keystore
+*.jks
+keystore.properties
+**/secrets/
+**/*secret*
+**/*password*.txt
+**/*.env
+.env
+
+# Ключ сопряжения и runtime-данные sync-сервера
 desktop-sync-server/data/backups/
 desktop-sync-server/data/pairing_key.txt
 desktop-sync-server/data/sync_log.txt
+desktop-sync-server/data/*.json
+desktop-sync-server/data/*.csv
+!desktop-sync-server/data/.gitkeep
+
+# Экспорты, резервные копии и любые JSON/CSV вне исходников приложения
+**/mars_backup*.json
+**/mars_tasks*.csv
+**/*backup*.json
+**/*export*.json
+**/*export*.csv
+docs/verification/**/*.json
+docs/verification/**/*.csv
+
+# Скриншоты, видео и артефакты визуальной/UI-верификации
+docs/screenshots/
+docs/ui-*.html
+docs/verification/visual/
+docs/verification/bluestacks/
+docs/verification/screenshots/
+docs/verification/**/*.png
+docs/verification/**/*.jpg
+docs/verification/**/*.jpeg
+docs/verification/**/*.webp
+docs/verification/**/*.mp4
+docs/verification/**/*.webm
+docs/verification/**/*.xml
+docs/verification/**/*.html
+docs/verification/**/*.txt
+docs/verification/**/*.py
+!docs/verification/V1_FINALIZATION_REPORT.md
+
+# Python
 __pycache__/
 *.pyc
 .venv/

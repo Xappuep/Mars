@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -103,9 +103,8 @@ import com.mars.planner.reminder.nextReminderMillis
 import com.mars.planner.sync.SyncClient
 import com.mars.planner.sync.SyncResult
 import com.mars.planner.ui.components.FilterChipRow
-import com.mars.planner.ui.components.MarsEmptyState
-import com.mars.planner.ui.components.MarsMoodCard
-import com.mars.planner.ui.components.MarsReactionBanner
+import com.mars.planner.ui.components.MarsBackgroundPresence
+import com.mars.planner.ui.components.MarsPresenceReaction
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.ProvideReduceAnimations
@@ -122,6 +121,7 @@ import com.mars.planner.ui.theme.StatusNotDone
 import com.mars.planner.ui.theme.StatusProgress
 import com.mars.planner.voice.VoiceInputHelper
 import com.mars.planner.voice.VoiceResult
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -142,6 +142,7 @@ internal object Routes {
     const val Settings = "settings"
     const val Sync = "sync"
     const val Ideas = "ideas"
+    const val MarsImages = "mars_images"
 
     fun edit(id: Long? = null) = if (id == null) "task_edit?id=-1" else "task_edit?id=$id"
     fun detail(id: Long) = "task_detail/$id"
@@ -358,6 +359,10 @@ fun MarsApp() {
         if (!settings.demoLoaded) {
             // демо не грузим автоматически — только из настроек
         }
+        when ((context as? android.app.Activity)?.intent?.getStringExtra("mars_open")) {
+            "mars_images" -> nav.navigate(Routes.MarsImages)
+            "settings" -> nav.navigate(Routes.Settings)
+        }
     }
 
     val showBottomBar = route in setOf(
@@ -408,6 +413,7 @@ fun MarsApp() {
             composable(Routes.Calendar) { CalendarScreen(vm, nav) }
             composable(Routes.Stats) { StatsScreen(vm) }
             composable(Routes.Settings) { SettingsScreen(vm, nav) }
+            composable(Routes.MarsImages) { MarsImagesPreviewScreen(nav) }
             composable(Routes.Sync) { SyncScreen(vm, nav) }
             composable(Routes.Ideas) { IdeasScreen(vm, nav) }
             composable(
@@ -429,7 +435,7 @@ fun MarsApp() {
 }
 
 @Composable
-private fun ScreenBackground(content: @Composable () -> Unit) {
+internal fun ScreenBackground(content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -464,6 +470,8 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 it.assetBase.removePrefix("mars_").equals(raw, ignoreCase = true)
         }
     }
+    val seedScenario = activity?.intent?.getStringExtra("mars_seed")
+    val reactionScenario = activity?.intent?.getStringExtra("mars_reaction")
     val mood = moodOverride ?: moodByLogic
     val scope = rememberCoroutineScope()
     var voiceMessage by remember { mutableStateOf<String?>(null) }
@@ -488,43 +496,101 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
+    LaunchedEffect(seedScenario) {
+        when (seedScenario) {
+            "demo" -> vm.loadDemo()
+            "done" -> {
+                vm.loadDemo()
+                kotlinx.coroutines.delay(400)
+                tasks.filter { it.status != TaskStatus.DONE }.forEach { task ->
+                    vm.changeStatus(task.id, TaskStatus.DONE)
+                }
+                vm.clearReaction()
+            }
+        }
+    }
+
+    LaunchedEffect(reactionScenario, settings.motivatorMode) {
+        when (reactionScenario) {
+            "done" -> {
+                delay(700)
+                vm.showReaction(
+                    MarsMotivator.reactionForStatusChange(TaskStatus.DONE, 0, settings.motivatorMode)
+                )
+            }
+            "postponed" -> {
+                delay(700)
+                vm.showReaction(
+                    MarsMotivator.reactionForStatusChange(TaskStatus.POSTPONED, 1, settings.motivatorMode)
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(reaction) {
+        if (reaction != null) {
+            delay(2800)
+            vm.clearReaction()
+        }
+    }
+
     LaunchedEffect(summary.overdue, settings.motivatorMode) {
         if (summary.overdue >= 2 && settings.motivatorMode != MotivatorMode.OFF && reaction == null) {
             vm.showReaction(MarsMotivator.reactionForManyOverdue(summary.overdue, settings.motivatorMode))
         }
     }
 
+    val displayMood = reaction?.mood ?: moodOverride ?: mood
+    val marsAlpha = when {
+        reaction != null -> 0.80f
+        summary.total == 0 -> 0.60f
+        else -> 0.30f
+    }
+    val contentWidth = Modifier.fillMaxWidth(0.64f)
+
     ScreenBackground {
         Box(modifier = Modifier.fillMaxSize()) {
+            MarsBackgroundPresence(
+                mood = displayMood,
+                presenceAlpha = marsAlpha,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 76.dp)
+            )
+            val pagePad = Modifier.padding(horizontal = 20.dp)
             LazyColumn(
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                contentPadding = PaddingValues(bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
             item {
-                Text("Ежедневник Марса", color = MarsOrange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(
-                    text = MarsMotivator.greetingMessage(settings.userName, summary.done, summary.total),
-                    color = MarsWhite,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    lineHeight = 32.sp
-                )
-                Text(dateLabel, color = MarsMuted, fontSize = 14.sp)
-            }
-            item {
-                MarsMoodCard(mood = mood)
-            }
-            if (reaction != null) {
-                item {
-                    MarsReactionBanner(
-                        reaction.mood,
-                        reaction.message,
-                        Modifier.clickable { vm.clearReaction() }
+                Column(modifier = pagePad.padding(top = 16.dp, bottom = 4.dp)) {
+                    Text(
+                        text = "Ежедневник Марса",
+                        color = MarsOrange,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Сегодня",
+                        color = MarsWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp,
+                        lineHeight = 36.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = dateLabel,
+                        color = MarsMuted,
+                        fontSize = 14.sp
                     )
                 }
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = pagePad,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     SummaryChip("Всего", summary.total, MarsWhite)
                     SummaryChip("Готово", summary.done, StatusDone)
                     SummaryChip("В работе", summary.inProgress, StatusProgress)
@@ -532,27 +598,46 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 }
             }
             item {
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Row(modifier = pagePad.horizontalScroll(rememberScrollState())) {
                     FilterChipRow(filter) { filter = it }
                 }
             }
             item {
-                MarsSecondaryButton("Синхронизировать с ПК", onClick = { nav.navigate(Routes.Sync) })
+                MarsSecondaryButton(
+                    "Синхронизировать с ПК",
+                    onClick = { nav.navigate(Routes.Sync) },
+                    modifier = pagePad
+                )
             }
             if (voiceMessage != null) {
                 item {
-                    Text(voiceMessage!!, color = MarsPeach, fontSize = 13.sp)
+                    Text(voiceMessage!!, color = MarsPeach, fontSize = 13.sp, modifier = pagePad)
                 }
             }
             if (filtered.isEmpty()) {
                 item {
-                    MarsEmptyState(
-                        mood = if (summary.overdue > 0) MarsMood.OVERDUE else MarsMood.DEFAULT,
-                        message = "На сегодня задач нет"
-                    )
+                    Column(
+                        modifier = pagePad
+                            .then(contentWidth)
+                            .padding(top = 12.dp, bottom = 8.dp)
+                    ) {
+                        Text(
+                            text = "На сегодня задач нет",
+                            color = MarsMuted,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "День можно оставить свободным или добавить важное.",
+                            color = MarsMuted.copy(alpha = 0.78f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
                 }
             }
-            items(filtered, key = { it.id }) { task ->
+            itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
                 val progress = remember(task.id, allTasks) {
                     val subs = allTasks.filter { it.parentTaskId == task.id }
                     if (subs.isEmpty()) null
@@ -561,12 +646,17 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                         "Подзадачи: $done из ${subs.size} выполнено"
                     }
                 }
-                TaskCard(
-                    task = task,
-                    onClick = { nav.navigate(Routes.detail(task.id)) },
-                    subtaskProgress = progress,
-                    modifier = Modifier
-                )
+                Column(modifier = pagePad.then(contentWidth)) {
+                    TaskCard(
+                        task = task,
+                        onClick = { nav.navigate(Routes.detail(task.id)) },
+                        subtaskProgress = progress
+                    )
+                    if (reaction != null && index == 0) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        MarsPresenceReaction(message = reaction!!.message)
+                    }
+                }
             }
             }
             NewTaskCtaBar(
