@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.mars.planner.domain.logic.DaySummaryCalculator
 import com.mars.planner.domain.logic.StatsCalculator
 import com.mars.planner.domain.logic.TaskRules
+import com.mars.planner.domain.logic.TodayTasksSelector
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskStatus
 import com.mars.planner.export.BackupCodec
@@ -169,5 +170,66 @@ class DomainLogicTest {
         val stats = StatsCalculator.compute(tasks, today, java.time.ZoneOffset.UTC)
         assertThat(stats.completedMonth).isEqualTo(1)
         assertThat(TaskRules.onlyRootTasks(tasks)).hasSize(1)
+    }
+
+    @Test
+    fun todayScreenShowsTaskDueToday() {
+        val today = LocalDate.of(2026, 8, 23)
+        val tasks = listOf(
+            TaskItem(title = "тест", status = TaskStatus.NEW, dueDateEpochDay = today.toEpochDay())
+        )
+        val selected = TodayTasksSelector.select(tasks, today)
+        assertThat(selected).hasSize(1)
+        assertThat(selected.first().title).isEqualTo("тест")
+    }
+
+    @Test
+    fun todayScreenShowsOverdueIncompleteTask() {
+        val today = LocalDate.of(2026, 8, 23)
+        val tasks = listOf(
+            TaskItem(title = "просрочено", status = TaskStatus.NEW, dueDateEpochDay = today.minusDays(3).toEpochDay()),
+            TaskItem(title = "сегодня", status = TaskStatus.IN_PROGRESS, dueDateEpochDay = today.toEpochDay())
+        )
+        val selected = TodayTasksSelector.select(tasks, today)
+        assertThat(selected).hasSize(2)
+        assertThat(selected.first().title).isEqualTo("просрочено")
+        val summary = DaySummaryCalculator.summarize(selected, today)
+        assertThat(summary.overdue).isEqualTo(1)
+        assertThat(summary.inProgress).isEqualTo(1)
+    }
+
+    @Test
+    fun completedOverdueTaskNotCountedAsOverdue() {
+        val today = LocalDate.of(2026, 8, 23)
+        val task = TaskItem(
+            title = "закрыта",
+            status = TaskStatus.DONE,
+            dueDateEpochDay = today.minusDays(1).toEpochDay()
+        )
+        assertThat(TaskRules.isOverdue(task, today)).isFalse()
+        assertThat(TodayTasksSelector.belongsOnToday(task, today)).isFalse()
+    }
+
+    @Test
+    fun cancelledTaskExcludedFromToday() {
+        val today = LocalDate.of(2026, 8, 23)
+        val task = TaskItem(
+            title = "отмена",
+            status = TaskStatus.CANCELLED,
+            dueDateEpochDay = today.toEpochDay()
+        )
+        assertThat(TodayTasksSelector.belongsOnToday(task, today)).isFalse()
+    }
+
+    @Test
+    fun futureTaskExcludedFromToday() {
+        val today = LocalDate.of(2026, 8, 23)
+        val task = TaskItem(
+            title = "будущее",
+            status = TaskStatus.NEW,
+            dueDateEpochDay = today.plusDays(2).toEpochDay()
+        )
+        assertThat(TodayTasksSelector.belongsOnToday(task, today)).isFalse()
+        assertThat(TodayTasksSelector.select(listOf(task), today)).isEmpty()
     }
 }

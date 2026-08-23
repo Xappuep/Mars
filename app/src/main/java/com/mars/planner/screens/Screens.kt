@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -49,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,6 +86,7 @@ import com.mars.planner.ui.components.marsPreviewOptions
 import com.mars.planner.ui.components.labelRu
 import com.mars.planner.ui.components.previewLabelRu
 import com.mars.planner.ui.components.redactSyncSecrets
+import com.mars.planner.ui.components.marsListItemMotion
 import com.mars.planner.ui.theme.MarsGraphite
 import com.mars.planner.ui.theme.MarsCardDark
 import com.mars.planner.ui.theme.MarsMuted
@@ -159,7 +162,7 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
                         )
                     }
                 }
-                items(filtered, key = { it.id }) { task ->
+                itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
                     val subs = allTasks.filter { it.parentTaskId == task.id }
                     val progress = if (subs.isEmpty()) {
                         null
@@ -171,7 +174,7 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
                         task,
                         onClick = { nav.navigate(Routes.detail(task.id)) },
                         subtaskProgress = progress,
-                        modifier = Modifier
+                        modifier = Modifier.marsListItemMotion(index)
                     )
                 }
             }
@@ -734,12 +737,14 @@ internal fun MarsImagesPreviewScreen(nav: NavHostController) {
     }
     val pagePad = Modifier.padding(horizontal = 20.dp)
     val contentWidth = Modifier.fillMaxWidth(0.64f)
+    val scrollState = rememberScrollState()
 
     ScreenBackground {
         Box(modifier = Modifier.fillMaxSize()) {
             MarsBackgroundPresence(
                 mood = selectedMood,
-                presenceAlpha = 0.30f,
+                presenceAlpha = 0.40f,
+                scrollOffsetPx = scrollState.value.toFloat(),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = 76.dp)
@@ -747,7 +752,7 @@ internal fun MarsImagesPreviewScreen(nav: NavHostController) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {

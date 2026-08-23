@@ -20,8 +20,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +60,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +95,7 @@ import com.mars.planner.domain.logic.DaySummaryCalculator
 import com.mars.planner.domain.logic.MoodFromDay
 import com.mars.planner.domain.logic.StatsCalculator
 import com.mars.planner.domain.logic.TaskRules
+import com.mars.planner.domain.logic.TodayTasksSelector
 import com.mars.planner.domain.model.DaySummary
 import com.mars.planner.domain.model.EnhancementIdea
 import com.mars.planner.domain.model.EnhancementStatus
@@ -108,8 +121,13 @@ import com.mars.planner.ui.components.MarsPresenceReaction
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.ProvideReduceAnimations
-import com.mars.planner.ui.components.SummaryChip
 import com.mars.planner.ui.components.TaskCard
+import com.mars.planner.ui.theme.MarsAmbientBackground
+import com.mars.planner.ui.theme.MarsBottomNavigationBar
+import com.mars.planner.ui.components.marsListItemMotion
+import com.mars.planner.ui.theme.MarsMotion
+import com.mars.planner.ui.theme.TodayStatsPanel
+import com.mars.planner.ui.theme.rememberSystemReduceMotion
 import com.mars.planner.ui.theme.MarsCardDark
 import com.mars.planner.ui.theme.MarsGraphite
 import com.mars.planner.ui.theme.MarsMuted
@@ -153,17 +171,18 @@ class AppViewModel(
     private val settingsRepo: SettingsRepository,
     private val syncClient: SyncClient
 ) : ViewModel() {
-    private val today = LocalDate.now().toEpochDay()
-
     val settings = settingsRepo.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
-    val todayTasks = tasks.observeDay(today).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val allRootTasks = tasks.observeRootTasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val todayTasks = allRootTasks.map { roots ->
+        TodayTasksSelector.select(roots, LocalDate.now())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     /** Все задачи включая подзадачи — только для прогресса и поиска по id. */
     val allTasks = tasks.observeEveryTask().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val ideas = tasks.observeIdeas().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val daySummary = todayTasks.map { DaySummaryCalculator.summarize(it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DaySummary())
+    val daySummary = todayTasks.map { list ->
+        DaySummaryCalculator.summarize(list, LocalDate.now())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DaySummary())
 
     fun subtaskProgressLabel(rootId: Long): String? {
         val subs = allTasks.value.filter { it.parentTaskId == rootId }
@@ -370,39 +389,43 @@ fun MarsApp() {
     )
 
     val settingsGlobal by vm.settings.collectAsState()
+    val systemReduceMotion = rememberSystemReduceMotion()
+    val reduceMotion = settingsGlobal.reduceAnimations || systemReduceMotion
 
-    ProvideReduceAnimations(settingsGlobal.reduceAnimations) {
+    ProvideReduceAnimations(reduceMotion) {
     Scaffold(
         containerColor = MarsGraphite,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = MarsCardDark) {
-                    val items = listOf(
-                        Triple(Routes.Today, "Сегодня", Icons.Filled.Home),
-                        Triple(Routes.Tasks, "Задачи", Icons.Filled.TaskAlt),
-                        Triple(Routes.Calendar, "Календарь", Icons.Filled.CalendarMonth),
-                        Triple(Routes.Stats, "Статистика", Icons.Outlined.Insights),
-                        Triple(Routes.Settings, "Настройки", Icons.Filled.Settings)
-                    )
-                    items.forEach { (r, label, icon) ->
-                        NavigationBarItem(
-                            selected = route == r,
-                            onClick = { nav.navigate(r) { launchSingleTop = true } },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label, fontSize = 10.sp) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MarsOrange,
-                                selectedTextColor = MarsOrange,
-                                indicatorColor = MarsOrange.copy(alpha = 0.15f),
-                                unselectedIconColor = MarsMuted,
-                                unselectedTextColor = MarsMuted
-                            )
-                        )
-                    }
-                }
+                val navItems = listOf(
+                    Triple(Routes.Today, "Сегодня", Icons.Filled.Home),
+                    Triple(Routes.Tasks, "Задачи", Icons.Filled.TaskAlt),
+                    Triple(Routes.Calendar, "Календарь", Icons.Filled.CalendarMonth),
+                    Triple(Routes.Stats, "Статистика", Icons.Outlined.Insights),
+                    Triple(Routes.Settings, "Настройки", Icons.Filled.Settings)
+                )
+                MarsBottomNavigationBar(
+                    route = route,
+                    items = navItems,
+                    onNavigate = { r -> nav.navigate(r) { launchSingleTop = true } }
+                )
             }
         }
     ) { padding ->
+        val taskEnter = fadeIn(tween(MarsMotion.NavTransitionMs)) +
+            scaleIn(initialScale = 0.96f, animationSpec = tween(MarsMotion.NavTransitionMs)) +
+            slideInHorizontally(animationSpec = tween(MarsMotion.NavTransitionMs)) { it / 12 }
+        val taskExit = fadeOut(tween(200)) +
+            scaleOut(targetScale = 0.98f, animationSpec = tween(200)) +
+            slideOutHorizontally(animationSpec = tween(200)) { it / 14 }
+        val taskPopEnter = fadeIn(tween(240)) +
+            slideInHorizontally(animationSpec = tween(240)) { -it / 14 }
+        val taskPopExit = fadeOut(tween(200)) +
+            scaleOut(targetScale = 0.96f, animationSpec = tween(200)) +
+            slideOutHorizontally(animationSpec = tween(200)) { it / 12 }
+        val noMotionEnter: EnterTransition = EnterTransition.None
+        val noMotionExit: ExitTransition = ExitTransition.None
+
         NavHost(
             navController = nav,
             startDestination = Routes.Today,
@@ -418,14 +441,22 @@ fun MarsApp() {
             composable(Routes.Ideas) { IdeasScreen(vm, nav) }
             composable(
                 route = "task_edit?id={id}",
-                arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
+                arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
+                enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
+                exitTransition = { if (reduceMotion) noMotionExit else taskExit },
+                popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
+                popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
             ) { entry ->
                 val id = entry.arguments?.getLong("id") ?: -1L
                 TaskEditScreen(vm, nav, if (id < 0) null else id)
             }
             composable(
                 route = "task_detail/{id}",
-                arguments = listOf(navArgument("id") { type = NavType.LongType })
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+                enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
+                exitTransition = { if (reduceMotion) noMotionExit else taskExit },
+                popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
+                popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
             ) { entry ->
                 TaskDetailScreen(vm, nav, entry.arguments!!.getLong("id"))
             }
@@ -436,15 +467,7 @@ fun MarsApp() {
 
 @Composable
 internal fun ScreenBackground(content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(MarsGraphite, MarsGraphite, MarsCardDark.copy(alpha = 0.35f))
-                )
-            )
-    ) { content() }
+    MarsAmbientBackground(content = content)
 }
 
 @Composable
@@ -541,24 +564,35 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
     }
 
     val displayMood = reaction?.mood ?: moodOverride ?: mood
+    val todayDate = remember { LocalDate.now() }
     val marsAlpha = when {
-        reaction != null -> 0.80f
-        summary.total == 0 -> 0.60f
-        else -> 0.30f
+        reaction != null -> 0.82f
+        tasks.isEmpty() -> 0.58f
+        else -> 0.40f
     }
     val contentWidth = Modifier.fillMaxWidth(0.64f)
+    var marsNudge by remember { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+    val scrollOffsetPx by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex * 120f + listState.firstVisibleItemScrollOffset
+        }
+    }
 
     ScreenBackground {
         Box(modifier = Modifier.fillMaxSize()) {
             MarsBackgroundPresence(
                 mood = displayMood,
                 presenceAlpha = marsAlpha,
+                scrollOffsetPx = scrollOffsetPx,
+                interactionNudge = marsNudge,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = 76.dp)
             )
             val pagePad = Modifier.padding(horizontal = 20.dp)
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -587,15 +621,7 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 }
             }
             item {
-                Row(
-                    modifier = pagePad,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    SummaryChip("Всего", summary.total, MarsWhite)
-                    SummaryChip("Готово", summary.done, StatusDone)
-                    SummaryChip("В работе", summary.inProgress, StatusProgress)
-                    SummaryChip("Просрочено", summary.overdue, StatusNotDone)
-                }
+                TodayStatsPanel(summary = summary, modifier = pagePad)
             }
             item {
                 Row(modifier = pagePad.horizontalScroll(rememberScrollState())) {
@@ -614,7 +640,7 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(voiceMessage!!, color = MarsPeach, fontSize = 13.sp, modifier = pagePad)
                 }
             }
-            if (filtered.isEmpty()) {
+            if (tasks.isEmpty()) {
                 item {
                     Column(
                         modifier = pagePad
@@ -646,9 +672,19 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                         "Подзадачи: $done из ${subs.size} выполнено"
                     }
                 }
-                Column(modifier = pagePad.then(contentWidth)) {
+                val overdue = TaskRules.isOverdue(task, todayDate)
+                val dueLabel = task.dueDateEpochDay?.let {
+                    LocalDate.ofEpochDay(it).format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
+                }
+                Column(
+                    modifier = pagePad
+                        .then(contentWidth)
+                        .marsListItemMotion(index)
+                ) {
                     TaskCard(
                         task = task,
+                        isOverdue = overdue,
+                        dueDateLabel = dueLabel,
                         onClick = { nav.navigate(Routes.detail(task.id)) },
                         subtaskProgress = progress
                     )
@@ -660,7 +696,10 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
             }
             }
             NewTaskCtaBar(
-                onNewTask = { nav.navigate(Routes.edit()) },
+                onNewTask = {
+                    marsNudge++
+                    nav.navigate(Routes.edit())
+                },
                 onVoice = { micPermission.launch(Manifest.permission.RECORD_AUDIO) },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )

@@ -12,7 +12,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 val MarsGraphite = Color(0xFF0E0E10)
+val MarsGraphiteDeep = Color(0xFF08080A)
+val MarsGraphiteMid = Color(0xFF121218)
 val MarsGraphiteElevated = Color(0xFF1A1A1F)
+val MarsGlass = Color(0xCC1E1E26)
+val MarsAccentProgress = Color(0xFF7B8CFF)
+val MarsAccentProgressSoft = Color(0x337B8CFF)
+val MarsOverdueGlow = Color(0xFFFF5A36)
+val MarsOverdueSoft = Color(0x33FF5A36)
+val MarsGoldGlow = Color(0xFFFFB347)
 val MarsOrange = Color(0xFFFF6A00)
 val MarsOrangeSoft = Color(0x33FF6A00)
 val MarsPeach = Color(0xFFFFB38A)

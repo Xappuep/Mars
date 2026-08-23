@@ -37,6 +37,30 @@ object TaskRules {
         tasks.filter { isRootTask(it) }
 }
 
+/**
+ * Задачи для главного экрана «Сегодня»: незавершённые корневые задачи
+ * с плановой датой сегодня или раньше (просроченные — выше в списке).
+ */
+object TodayTasksSelector {
+    fun belongsOnToday(task: TaskItem, today: LocalDate = LocalDate.now()): Boolean {
+        if (!TaskRules.isRootTask(task)) return false
+        if (task.status == TaskStatus.CANCELLED || task.status == TaskStatus.DONE) return false
+        val due = task.dueDateEpochDay ?: return false
+        return due <= today.toEpochDay()
+    }
+
+    fun select(tasks: List<TaskItem>, today: LocalDate = LocalDate.now()): List<TaskItem> =
+        tasks.filter { belongsOnToday(it, today) }
+            .sortedWith(
+                compareBy(
+                    { if (TaskRules.isOverdue(it, today)) 0 else 1 },
+                    { it.dueDateEpochDay ?: Long.MAX_VALUE },
+                    { -it.priority.ordinal },
+                    { -it.updatedAt }
+                )
+            )
+}
+
 object DaySummaryCalculator {
     fun summarize(tasks: List<TaskItem>, today: LocalDate = LocalDate.now()): DaySummary {
         var done = 0

@@ -7,6 +7,7 @@ import com.mars.planner.data.db.toEntity
 import com.mars.planner.domain.logic.DaySummaryCalculator
 import com.mars.planner.domain.logic.StatsCalculator
 import com.mars.planner.domain.logic.TaskRules
+import com.mars.planner.domain.logic.TodayTasksSelector
 import com.mars.planner.domain.model.DaySummary
 import com.mars.planner.domain.model.EnhancementIdea
 import com.mars.planner.domain.model.EnhancementStatus
@@ -28,7 +29,9 @@ class TaskRepository(
         taskDao.observeRootTasks().map { list -> list.map { it.toDomain() } }
 
     fun observeDay(epochDay: Long): Flow<List<TaskItem>> =
-        taskDao.observeForDay(epochDay).map { list -> list.map { it.toDomain() } }
+        observeRootTasks().map { roots ->
+            TodayTasksSelector.select(roots, LocalDate.ofEpochDay(epochDay))
+        }
 
     /** Только задачи верхнего уровня (без подзадач). */
     fun observeAll(): Flow<List<TaskItem>> =
@@ -171,12 +174,12 @@ class TaskRepository(
     }
 
     suspend fun daySummary(epochDay: Long): DaySummary {
-        val tasks = taskDao.observeForDay(epochDay)
-        // one-shot via getBetween
-        val list = taskDao.getBetweenDays(epochDay, epochDay)
-            .filter { it.parentTaskId == null && it.nestingLevel == 0 }
-            .map { it.toDomain() }
-        return DaySummaryCalculator.summarize(list, LocalDate.ofEpochDay(epochDay))
+        val today = LocalDate.ofEpochDay(epochDay)
+        val list = taskDao.getAllRootsOnce().map { it.toDomain() }
+        return DaySummaryCalculator.summarize(
+            TodayTasksSelector.select(list, today),
+            today
+        )
     }
 
     suspend fun stats(): StatsSnapshot {
