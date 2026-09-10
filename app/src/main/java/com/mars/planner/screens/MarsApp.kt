@@ -5,8 +5,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,42 +25,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.TaskAlt
-import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,16 +43,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -88,33 +68,31 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.mars.planner.MarsApplication
-import com.mars.planner.data.TaskRepository
+import com.mars.planner.data.PlannerRepository
 import com.mars.planner.data.prefs.AppSettings
 import com.mars.planner.data.prefs.SettingsRepository
 import com.mars.planner.domain.logic.DaySummaryCalculator
 import com.mars.planner.domain.logic.MoodFromDay
 import com.mars.planner.domain.logic.StatsCalculator
+import com.mars.planner.domain.logic.TaskFiltering
 import com.mars.planner.domain.logic.TaskRules
 import com.mars.planner.domain.logic.TodayTasksSelector
 import com.mars.planner.domain.model.DaySummary
-import com.mars.planner.domain.model.EnhancementIdea
-import com.mars.planner.domain.model.EnhancementStatus
 import com.mars.planner.domain.model.MarsMood
+import com.mars.planner.domain.model.MigrationReport
 import com.mars.planner.domain.model.MotivatorMode
+import com.mars.planner.domain.model.ProjectItem
 import com.mars.planner.domain.model.StatsSnapshot
+import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskItem
-import com.mars.planner.domain.model.TaskPriority
 import com.mars.planner.domain.model.TaskStatus
-import com.mars.planner.domain.model.TaskWithDetails
 import com.mars.planner.export.BackupCodec
 import com.mars.planner.export.toAppSettings
-import com.mars.planner.export.toDomain
 import com.mars.planner.motivator.MarsMotivator
 import com.mars.planner.motivator.MarsReaction
 import com.mars.planner.reminder.ReminderScheduler
-import com.mars.planner.reminder.nextReminderMillis
-import com.mars.planner.sync.SyncClient
-import com.mars.planner.sync.SyncResult
+import com.mars.planner.sync.SyncCoordinator
+import com.mars.planner.sync.SyncStepResult
 import com.mars.planner.ui.components.FilterChipRow
 import com.mars.planner.ui.components.MarsBackgroundPresence
 import com.mars.planner.ui.components.MarsPresenceReaction
@@ -122,44 +100,37 @@ import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.ProvideReduceAnimations
 import com.mars.planner.ui.components.TaskCard
+import com.mars.planner.ui.components.marsListItemMotion
+import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.MarsAmbientBackground
 import com.mars.planner.ui.theme.MarsBottomNavigationBar
-import com.mars.planner.ui.components.marsListItemMotion
 import com.mars.planner.ui.theme.MarsMotion
+import com.mars.planner.ui.theme.ProvideMarsAppearance
+import com.mars.planner.ui.theme.StatusOverdue
 import com.mars.planner.ui.theme.TodayStatsPanel
+import com.mars.planner.ui.theme.appTheme
+import com.mars.planner.ui.theme.effects
 import com.mars.planner.ui.theme.rememberSystemReduceMotion
-import com.mars.planner.ui.theme.MarsCardDark
-import com.mars.planner.ui.theme.MarsGraphite
-import com.mars.planner.ui.theme.MarsMuted
-import com.mars.planner.ui.theme.MarsOrange
-import com.mars.planner.ui.theme.MarsPeach
-import com.mars.planner.ui.theme.MarsWhite
-import com.mars.planner.ui.theme.StatusDone
-import com.mars.planner.ui.theme.StatusNotDone
-import com.mars.planner.ui.theme.StatusProgress
 import com.mars.planner.voice.VoiceInputHelper
 import com.mars.planner.voice.VoiceResult
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
-import java.time.YearMonth
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 internal object Routes {
     const val Today = "today"
     const val Tasks = "tasks"
+    const val Projects = "projects"
     const val Calendar = "calendar"
     const val Stats = "stats"
     const val Settings = "settings"
     const val Sync = "sync"
-    const val Ideas = "ideas"
+    const val SyncGuide = "sync_guide"
+    const val Conflicts = "conflicts"
     const val MarsImages = "mars_images"
 
     fun edit(id: Long? = null) = if (id == null) "task_edit?id=-1" else "task_edit?id=$id"
@@ -167,29 +138,40 @@ internal object Routes {
 }
 
 class AppViewModel(
-    private val tasks: TaskRepository,
+    private val app: MarsApplication,
+    private val planner: PlannerRepository,
     private val settingsRepo: SettingsRepository,
-    private val syncClient: SyncClient
+    private val sync: SyncCoordinator
 ) : ViewModel() {
-    val settings = settingsRepo.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
-    val allRootTasks = tasks.observeRootTasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val todayTasks = allRootTasks.map { roots ->
-        TodayTasksSelector.select(roots, LocalDate.now())
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    /** Все задачи включая подзадачи — только для прогресса и поиска по id. */
-    val allTasks = tasks.observeEveryTask().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val ideas = tasks.observeIdeas().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val settings = settingsRepo.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
-    val daySummary = todayTasks.map { list ->
-        DaySummaryCalculator.summarize(list, LocalDate.now())
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DaySummary())
+    val projects = planner.observeProjects()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun subtaskProgressLabel(rootId: Long): String? {
-        val subs = allTasks.value.filter { it.parentTaskId == rootId }
-        if (subs.isEmpty()) return null
-        val done = subs.count { it.status == TaskStatus.DONE }
-        return "Подзадачи: $done из ${subs.size} выполнено"
-    }
+    val activeProjects = planner.observeActiveProjects()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val projectsWithStats = planner.observeProjectsWithStats()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val allTasks = planner.observeAllTasks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** «Сегодня»: открытые с сроком до сегодня плюс закрытые сегодня. */
+    val todayTasks = allTasks
+        .map { TodayTasksSelector.selectDayBoard(it, LocalDate.now()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val daySummary = todayTasks
+        .map { DaySummaryCalculator.summarize(it, LocalDate.now()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DaySummary())
+
+    val conflicts = planner.observeConflicts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val pendingSyncCount = planner.observePendingSyncCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     val mood = combine(daySummary, settings) { summary, s ->
         if (s.motivatorMode == MotivatorMode.OFF) MarsMood.DEFAULT else MoodFromDay.resolve(summary)
@@ -197,6 +179,11 @@ class AppViewModel(
 
     var reaction by mutableStateOf<MarsReaction?>(null)
         private set
+
+    var migrationReport by mutableStateOf<MigrationReport?>(null)
+        private set
+
+    private var migrationChecked = false
 
     fun showReaction(value: MarsReaction?) {
         reaction = value
@@ -206,149 +193,171 @@ class AppViewModel(
         reaction = null
     }
 
-    suspend fun saveTask(
-        task: TaskItem,
-        scheduleReminder: Boolean,
-        context: android.content.Context,
-        snoozeMinutes: Int = 30
-    ): Long {
-        val id = tasks.saveTask(task)
-        if (scheduleReminder && task.reminderAtEpochMillis != null) {
-            ReminderScheduler.scheduleTaskReminder(
-                context, id, task.title, task.reminderAtEpochMillis, snoozeMinutes
-            )
-            updateSettings { it.copy(defaultSnoozeMinutes = snoozeMinutes) }
-        } else if (task.reminderAtEpochMillis == null) {
-            ReminderScheduler.cancelTaskReminder(context, id)
+    // ——— Задачи ———
+
+    fun taskFlow(id: Long) = planner.observeTask(id)
+
+    suspend fun getTask(id: Long): TaskItem? = planner.getTask(id)
+
+    suspend fun saveTask(task: TaskItem): Long {
+        val id = planner.saveTask(task)
+        planner.getTask(id)?.let { saved ->
+            ReminderScheduler.applyTaskReminder(app, saved, settings.value.defaultSnoozeMinutes)
         }
         return id
     }
 
-    suspend fun deleteTask(id: Long, context: android.content.Context) {
-        ReminderScheduler.cancelTaskReminder(context, id)
-        tasks.deleteTask(id)
+    suspend fun deleteTask(id: Long) {
+        ReminderScheduler.cancelTaskReminder(app, id)
+        planner.deleteTask(id)
     }
 
-    /** Удаляет задачу вместе с прямыми подзадачами (с явным подтверждением в UI). */
-    suspend fun deleteTaskCascade(id: Long, context: android.content.Context) {
-        val children = tasks.exportSnapshot().first.filter { it.parentTaskId == id }
-        children.forEach { child ->
-            ReminderScheduler.cancelTaskReminder(context, child.id)
-            tasks.deleteTask(child.id)
-        }
-        deleteTask(id, context)
-    }
-
-    suspend fun changeStatus(
-        id: Long,
-        status: TaskStatus,
-        forceComplete: Boolean = false
-    ): Pair<Boolean, String?> {
-        val details = tasks.getTask(id) ?: return false to null
-        val subtasks = withContext(Dispatchers.IO) {
-            // details via export + filter
-            tasks.exportSnapshot().first.filter { it.parentTaskId == id }
-        }
-        val incomplete = subtasks.any { it.status != TaskStatus.DONE && it.status != TaskStatus.CANCELLED }
-        if (status == TaskStatus.DONE && incomplete && !forceComplete) {
-            return false to "Есть незавершённые подзадачи. Вы действительно хотите завершить основную задачу?"
-        }
-        val updated = tasks.updateStatus(id, status) ?: return false to null
-        val mode = settings.value.motivatorMode
-        reaction = MarsMotivator.reactionForStatusChange(status, updated.postponeCount, mode)
-        return true to null
-    }
-
-    suspend fun postpone(id: Long, day: Long, time: Int?, reason: String?) {
-        val updated = tasks.postponeTask(id, day, time, reason) ?: return
+    suspend fun changeStatus(id: Long, status: TaskStatus) {
+        val updated = planner.setTaskStatus(id, status) ?: return
+        ReminderScheduler.applyTaskReminder(app, updated, settings.value.defaultSnoozeMinutes)
         reaction = MarsMotivator.reactionForStatusChange(
-            TaskStatus.POSTPONED,
-            updated.postponeCount,
-            settings.value.motivatorMode
+            newStatus = status,
+            overdueCount = if (TaskRules.isOverdue(updated.copy(status = TaskStatus.OPEN))) 1 else 0,
+            mode = settings.value.motivatorMode
         )
     }
 
-    fun taskDetails(id: Long) = tasks.observeTaskDetails(id)
-
-    suspend fun addSubtask(parentId: Long, title: String) = tasks.addSubtask(parentId, title)
-    suspend fun saveEnhancement(idea: EnhancementIdea) = tasks.saveEnhancement(idea)
-    suspend fun deferEnhancement(id: Long, reason: String?) {
-        tasks.deferEnhancement(id, reason)
-        reaction = MarsMotivator.reactionForDeferredEnhancement()
+    /** Перенос срока задачи: новый dueAt либо null (без срока). */
+    suspend fun postpone(id: Long, dueAtEpochMillis: Long?) {
+        val updated = planner.setTaskDueAt(id, dueAtEpochMillis) ?: return
+        ReminderScheduler.applyTaskReminder(app, updated, settings.value.defaultSnoozeMinutes)
+        reaction = MarsMotivator.reactionForPostpone(settings.value.motivatorMode)
     }
-    suspend fun convertEnhancement(id: Long) = tasks.convertEnhancementToTask(id)
+
+    fun projectName(uuid: String?): String? {
+        if (uuid.isNullOrBlank()) return null
+        return projects.value.find { it.syncUuid == uuid }?.name
+    }
+
+    fun filterTasks(tasks: List<TaskItem>, filter: TaskFilter): List<TaskItem> =
+        TaskFiltering.apply(tasks, filter, LocalDate.now())
+
+    // ——— Проекты ———
+
+    suspend fun saveProject(project: ProjectItem): Long = planner.saveProject(project)
+
+    suspend fun archiveProject(id: Long, archived: Boolean) = planner.archiveProject(id, archived)
+
+    suspend fun deleteProject(id: Long) {
+        planner.getProject(id)?.let { project ->
+            allTasks.value.filter { it.projectSyncUuid == project.syncUuid }.forEach {
+                ReminderScheduler.cancelTaskReminder(app, it.id)
+            }
+        }
+        planner.deleteProject(id)
+    }
+
+    // ——— Настройки, демо, экспорт ———
 
     suspend fun updateSettings(transform: (AppSettings) -> AppSettings) = settingsRepo.update(transform)
 
     suspend fun exportJson(): String {
-        val (t, e) = tasks.exportSnapshot()
-        return BackupCodec.toJson(t, e, settings.value)
+        val (tasks, projectList) = planner.exportSnapshot()
+        return BackupCodec.toJson(tasks.filter { !it.isDemo }, projectList.filter { !it.isDemo }, settings.value)
     }
 
     suspend fun exportCsv(): String {
-        val (t, _) = tasks.exportSnapshot()
-        // CSV — только основные задачи верхнего уровня (без подзадач).
-        return BackupCodec.toCsv(TaskRules.onlyRootTasks(t))
+        val (tasks, projectList) = planner.exportSnapshot()
+        return BackupCodec.toCsv(projectList.filter { !it.isDemo }, tasks.filter { !it.isDemo })
     }
 
-    suspend fun importJson(json: String, replace: Boolean) {
+    suspend fun importJson(json: String, replace: Boolean): Int {
         val payload = BackupCodec.fromJson(json)
-        val taskModels = payload.tasks.map { it.toDomain() }
-        val enhModels = payload.enhancements.map { it.toDomain() }
+        val models = BackupCodec.toModels(payload)
         if (replace) {
-            // локальная резервная копия уже должна быть создана вызывающим кодом
-            tasks.replaceAll(taskModels, enhModels)
+            planner.replaceAll(models.projects, models.tasks)
         } else {
-            tasks.mergeImport(taskModels, enhModels)
+            planner.mergeImport(models.projects, models.tasks)
         }
-        payload.settings?.let { dto ->
-            settingsRepo.update { dto.toAppSettings(it) }
-        }
+        payload.settings?.let { dto -> settingsRepo.update { dto.toAppSettings(it) } }
+        sync.rescheduleReminders()
+        return models.tasks.size
     }
 
     suspend fun loadDemo() {
-        tasks.loadDemoIfNeeded()
+        planner.loadDemo()
         settingsRepo.update { it.copy(demoLoaded = true) }
     }
 
     suspend fun clearDemo() {
-        tasks.clearDemo()
+        planner.clearDemo()
         settingsRepo.update { it.copy(demoLoaded = false) }
     }
 
-    fun stats(): StatsSnapshot = StatsCalculator.compute(allRootTasks.value)
+    fun stats(): StatsSnapshot = StatsCalculator.compute(allTasks.value)
 
-    fun syncCheck(): com.mars.planner.sync.SyncServerInfo {
-        val s = settings.value
-        return syncClient.checkConnection(s.syncHost, s.syncPort, s.syncKey)
+    // ——— Отчёт о миграции ———
+
+    suspend fun checkMigrationReportOnce() {
+        if (migrationChecked) return
+        migrationChecked = true
+        val report = planner.migrationReport()
+        if (report != null && !report.shown) migrationReport = report
     }
 
-    suspend fun syncUpload(): SyncResult {
-        val s = settings.value
-        val json = exportJson()
-        val result = syncClient.uploadBackup(s.syncHost, s.syncPort, s.syncKey, json)
-        if (result is SyncResult.Success) {
-            settingsRepo.update { it.copy(lastSyncAt = System.currentTimeMillis()) }
-        }
-        return result
+    suspend fun dismissMigrationReport() {
+        migrationReport = null
+        planner.markMigrationReportShown()
     }
 
-    suspend fun syncDownload(replace: Boolean): SyncResult {
-        val s = settings.value
-        val (result, json) = syncClient.downloadBackup(s.syncHost, s.syncPort, s.syncKey)
-        if (result is SyncResult.Success && json != null) {
-            importJson(json, replace)
-            settingsRepo.update { it.copy(lastSyncAt = System.currentTimeMillis()) }
-        }
-        return result
-    }
+    suspend fun migrationArchiveJson(): String? = planner.exportMigrationArchiveJson()
+
+    // ——— Синхронизация «Рубеж» ———
+
+    /** Незавершённая заявка на сопряжение: ждём подтверждения на ПК. */
+    val pairing = sync.pairing
+
+    val isPaired: Boolean get() = sync.isPaired
+
+    suspend fun checkSyncServer(): SyncStepResult = sync.checkServer()
+
+    suspend fun startPairing(qrRaw: String): SyncStepResult = sync.startPairing(qrRaw)
+
+    suspend fun pollPairStatus(): SyncStepResult = sync.pollPairStatus()
+
+    fun cancelPairing() = sync.cancelPairing()
+
+    suspend fun unpair() = sync.unpair()
+
+    suspend fun pushChanges(): SyncStepResult = sync.pushChanges()
+
+    suspend fun pullChanges(): SyncStepResult = sync.pullChanges()
+
+    suspend fun preparePcPrimarySnapshot() = sync.preparePcPrimarySnapshot()
+
+    suspend fun applyPcPrimarySnapshot(
+        preview: SyncCoordinator.SnapshotPreview,
+        onStage: (SyncCoordinator.SnapshotStage) -> Unit = {}
+    ): SyncStepResult = sync.applyPcPrimarySnapshot(preview, onStage)
+
+    suspend fun retryPendingSnapshotAck(): SyncStepResult = sync.retryPendingSnapshotAck()
+
+    suspend fun resolvePendingSnapshotAckState(): SyncCoordinator.PendingSnapshotAckState =
+        sync.resolvePendingSnapshotAckState()
+
+    suspend fun hydratePendingSnapshotAck(): String? = sync.hydratePendingSnapshotAck()
+
+    suspend fun restorePhoneBackup(): SyncStepResult = sync.restorePhoneBackup()
+
+    suspend fun resolveConflict(conflictId: Long, keepLocal: Boolean) =
+        sync.resolveConflict(conflictId, keepLocal)
 
     companion object {
         fun factory(app: MarsApplication): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return AppViewModel(app.container.tasks, app.container.settings, app.container.sync) as T
+                    return AppViewModel(
+                        app = app,
+                        planner = app.container.planner,
+                        settingsRepo = app.container.settings,
+                        sync = app.container.sync
+                    ) as T
                 }
             }
     }
@@ -374,95 +383,139 @@ fun MarsApp() {
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        val settings = vm.settings.value
-        if (!settings.demoLoaded) {
-            // демо не грузим автоматически — только из настроек
-        }
+        vm.checkMigrationReportOnce()
         when ((context as? android.app.Activity)?.intent?.getStringExtra("mars_open")) {
             "mars_images" -> nav.navigate(Routes.MarsImages)
             "settings" -> nav.navigate(Routes.Settings)
+            "sync" -> nav.navigate(Routes.Sync)
         }
     }
 
     val showBottomBar = route in setOf(
-        Routes.Today, Routes.Tasks, Routes.Calendar, Routes.Stats, Routes.Settings
+        Routes.Today, Routes.Tasks, Routes.Projects, Routes.Calendar, Routes.Settings
     )
 
     val settingsGlobal by vm.settings.collectAsState()
     val systemReduceMotion = rememberSystemReduceMotion()
     val reduceMotion = settingsGlobal.reduceAnimations || systemReduceMotion
 
-    ProvideReduceAnimations(reduceMotion) {
-    Scaffold(
-        containerColor = MarsGraphite,
-        bottomBar = {
-            if (showBottomBar) {
-                val navItems = listOf(
-                    Triple(Routes.Today, "Сегодня", Icons.Filled.Home),
-                    Triple(Routes.Tasks, "Задачи", Icons.Filled.TaskAlt),
-                    Triple(Routes.Calendar, "Календарь", Icons.Filled.CalendarMonth),
-                    Triple(Routes.Stats, "Статистика", Icons.Outlined.Insights),
-                    Triple(Routes.Settings, "Настройки", Icons.Filled.Settings)
-                )
-                MarsBottomNavigationBar(
-                    route = route,
-                    items = navItems,
-                    onNavigate = { r -> nav.navigate(r) { launchSingleTop = true } }
-                )
-            }
-        }
-    ) { padding ->
-        val taskEnter = fadeIn(tween(MarsMotion.NavTransitionMs)) +
-            scaleIn(initialScale = 0.96f, animationSpec = tween(MarsMotion.NavTransitionMs)) +
-            slideInHorizontally(animationSpec = tween(MarsMotion.NavTransitionMs)) { it / 12 }
-        val taskExit = fadeOut(tween(200)) +
-            scaleOut(targetScale = 0.98f, animationSpec = tween(200)) +
-            slideOutHorizontally(animationSpec = tween(200)) { it / 14 }
-        val taskPopEnter = fadeIn(tween(240)) +
-            slideInHorizontally(animationSpec = tween(240)) { -it / 14 }
-        val taskPopExit = fadeOut(tween(200)) +
-            scaleOut(targetScale = 0.96f, animationSpec = tween(200)) +
-            slideOutHorizontally(animationSpec = tween(200)) { it / 12 }
-        val noMotionEnter: EnterTransition = EnterTransition.None
-        val noMotionExit: ExitTransition = ExitTransition.None
+    ProvideMarsAppearance(settingsGlobal.appTheme, settingsGlobal.effects) {
+        ProvideReduceAnimations(reduceMotion) {
+            val palette = LocalMarsPalette.current
+            Scaffold(
+                containerColor = palette.background,
+                bottomBar = {
+                    if (showBottomBar) {
+                        val navItems = listOf(
+                            Triple(Routes.Today, "Сегодня", Icons.Filled.Home),
+                            Triple(Routes.Tasks, "Задачи", Icons.Filled.TaskAlt),
+                            Triple(Routes.Projects, "Проекты", Icons.Filled.Folder),
+                            Triple(Routes.Calendar, "Календарь", Icons.Filled.CalendarMonth),
+                            Triple(Routes.Settings, "Настройки", Icons.Filled.Settings)
+                        )
+                        MarsBottomNavigationBar(
+                            route = route,
+                            items = navItems,
+                            onNavigate = { r -> nav.navigate(r) { launchSingleTop = true } }
+                        )
+                    }
+                }
+            ) { padding ->
+                val taskEnter = fadeIn(tween(MarsMotion.NavTransitionMs)) +
+                    scaleIn(initialScale = 0.96f, animationSpec = tween(MarsMotion.NavTransitionMs)) +
+                    slideInHorizontally(animationSpec = tween(MarsMotion.NavTransitionMs)) { it / 12 }
+                val taskExit = fadeOut(tween(200)) +
+                    scaleOut(targetScale = 0.98f, animationSpec = tween(200)) +
+                    slideOutHorizontally(animationSpec = tween(200)) { it / 14 }
+                val taskPopEnter = fadeIn(tween(240)) +
+                    slideInHorizontally(animationSpec = tween(240)) { -it / 14 }
+                val taskPopExit = fadeOut(tween(200)) +
+                    scaleOut(targetScale = 0.96f, animationSpec = tween(200)) +
+                    slideOutHorizontally(animationSpec = tween(200)) { it / 12 }
+                val noMotionEnter: EnterTransition = EnterTransition.None
+                val noMotionExit: ExitTransition = ExitTransition.None
 
-        NavHost(
-            navController = nav,
-            startDestination = Routes.Today,
-            modifier = Modifier.padding(padding)
-        ) {
-            composable(Routes.Today) { TodayScreen(vm, nav) }
-            composable(Routes.Tasks) { TasksScreen(vm, nav) }
-            composable(Routes.Calendar) { CalendarScreen(vm, nav) }
-            composable(Routes.Stats) { StatsScreen(vm) }
-            composable(Routes.Settings) { SettingsScreen(vm, nav) }
-            composable(Routes.MarsImages) { MarsImagesPreviewScreen(nav) }
-            composable(Routes.Sync) { SyncScreen(vm, nav) }
-            composable(Routes.Ideas) { IdeasScreen(vm, nav) }
-            composable(
-                route = "task_edit?id={id}",
-                arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
-                enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
-                exitTransition = { if (reduceMotion) noMotionExit else taskExit },
-                popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
-                popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
-            ) { entry ->
-                val id = entry.arguments?.getLong("id") ?: -1L
-                TaskEditScreen(vm, nav, if (id < 0) null else id)
+                NavHost(
+                    navController = nav,
+                    startDestination = Routes.Today,
+                    modifier = Modifier.padding(padding)
+                ) {
+                    composable(Routes.Today) { TodayScreen(vm, nav) }
+                    composable(Routes.Tasks) { TasksScreen(vm, nav) }
+                    composable(Routes.Projects) { ProjectsScreen(vm, nav) }
+                    composable(Routes.Calendar) { CalendarScreen(vm, nav) }
+                    composable(Routes.Stats) { StatsScreen(vm, nav) }
+                    composable(Routes.Settings) { SettingsScreen(vm, nav) }
+                    composable(Routes.MarsImages) { MarsImagesPreviewScreen(nav) }
+                    composable(Routes.Sync) { SyncScreen(vm, nav) }
+                    composable(Routes.SyncGuide) { SyncGuideScreen(nav) }
+                    composable(Routes.Conflicts) { ConflictsScreen(vm, nav) }
+                    composable(
+                        route = "task_edit?id={id}",
+                        arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
+                        enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
+                        exitTransition = { if (reduceMotion) noMotionExit else taskExit },
+                        popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
+                        popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
+                    ) { entry ->
+                        val id = entry.arguments?.getLong("id") ?: -1L
+                        TaskEditScreen(vm, nav, if (id < 0) null else id)
+                    }
+                    composable(
+                        route = "task_detail/{id}",
+                        arguments = listOf(navArgument("id") { type = NavType.LongType }),
+                        enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
+                        exitTransition = { if (reduceMotion) noMotionExit else taskExit },
+                        popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
+                        popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
+                    ) { entry ->
+                        TaskDetailScreen(vm, nav, entry.arguments!!.getLong("id"))
+                    }
+                }
             }
-            composable(
-                route = "task_detail/{id}",
-                arguments = listOf(navArgument("id") { type = NavType.LongType }),
-                enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
-                exitTransition = { if (reduceMotion) noMotionExit else taskExit },
-                popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
-                popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
-            ) { entry ->
-                TaskDetailScreen(vm, nav, entry.arguments!!.getLong("id"))
-            }
+
+            MigrationReportDialog(vm)
         }
     }
-    }
+}
+
+@Composable
+private fun MigrationReportDialog(vm: AppViewModel) {
+    val report = vm.migrationReport ?: return
+    val palette = LocalMarsPalette.current
+    val scope = rememberCoroutineScope()
+    val dismiss = { scope.launch { vm.dismissMigrationReport() } }
+    AlertDialog(
+        onDismissRequest = { dismiss() },
+        title = { Text("Данные перенесены в новую модель") },
+        text = {
+            Column {
+                Text(
+                    "Ежедневник перешёл на модель «Рубежа»: проекты и задачи со статусами " +
+                        "«Открыта» и «Выполнено».",
+                    color = palette.textMuted,
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("Создано проектов из категорий: ${report.projectsCreated}", color = palette.text, fontSize = 13.sp)
+                Text("Перенесено задач: ${report.tasksMigrated}", color = palette.text, fontSize = 13.sp)
+                Text("Подзадач стали отдельными задачами: ${report.subtasksConverted}", color = palette.text, fontSize = 13.sp)
+                Text("Дополнений стали задачами: ${report.enhancementsConverted}", color = palette.text, fontSize = 13.sp)
+                Text("Отменённых задач помечено выполненными: ${report.cancelledToDone}", color = palette.text, fontSize = 13.sp)
+                Text("Задач со сроком на 23:59: ${report.dueAt2359Count}", color = palette.text, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    "Архив старых данных сохранён внутри приложения. Его можно выгрузить " +
+                        "в Настройках → «Архив миграции».",
+                    color = palette.textMuted,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { dismiss() }) { Text("Понятно") }
+        }
+    )
 }
 
 @Composable
@@ -471,18 +524,19 @@ internal fun ScreenBackground(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
+internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
+    val palette = LocalMarsPalette.current
     val tasks by vm.todayTasks.collectAsState()
-    val allTasks by vm.allTasks.collectAsState()
     val summary by vm.daySummary.collectAsState()
     val moodByLogic by vm.mood.collectAsState()
     val settings by vm.settings.collectAsState()
+    val pendingSync by vm.pendingSyncCount.collectAsState()
+    val conflicts by vm.conflicts.collectAsState()
     val reaction = vm.reaction
-    var filter by remember { mutableStateOf<TaskStatus?>(null) }
-    val dateLabel = remember {
-        LocalDate.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")))
-    }
-    val filtered = tasks.filter { filter == null || it.status == filter }
+    var filter by remember { mutableStateOf(TaskFilter.ALL) }
+    val dateLabel = remember { LocalDate.now().format(ruDateFull) }
+    val todayDate = remember { LocalDate.now() }
+    val filtered = remember(tasks, filter) { vm.filterTasks(tasks, filter) }
     val context = LocalContext.current
     // QA: adb am start … --es mars_mood mars_postponed (или done/working/supportive/…)
     val activity = context as? android.app.Activity
@@ -496,7 +550,6 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
     val seedScenario = activity?.intent?.getStringExtra("mars_seed")
     val reactionScenario = activity?.intent?.getStringExtra("mars_reaction")
     val mood = moodOverride ?: moodByLogic
-    val scope = rememberCoroutineScope()
     var voiceMessage by remember { mutableStateOf<String?>(null) }
     val voiceHelper = remember { VoiceInputHelper(context) }
     val micPermission = rememberLauncherForActivityResult(
@@ -506,9 +559,8 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
             voiceHelper.startListening { result ->
                 when (result) {
                     is VoiceResult.Success -> {
-                        nav.navigate(Routes.edit())
-                        // title will be passed via savedState later; store in static holder
                         PendingVoiceTitle.value = result.text
+                        nav.navigate(Routes.edit())
                     }
                     is VoiceResult.Error -> voiceMessage = result.message
                     VoiceResult.Unavailable -> voiceMessage = "Распознавание недоступно"
@@ -524,8 +576,8 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
             "demo" -> vm.loadDemo()
             "done" -> {
                 vm.loadDemo()
-                kotlinx.coroutines.delay(400)
-                tasks.filter { it.status != TaskStatus.DONE }.forEach { task ->
+                delay(400)
+                vm.todayTasks.value.filter { it.status != TaskStatus.DONE }.forEach { task ->
                     vm.changeStatus(task.id, TaskStatus.DONE)
                 }
                 vm.clearReaction()
@@ -543,9 +595,7 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
             }
             "postponed" -> {
                 delay(700)
-                vm.showReaction(
-                    MarsMotivator.reactionForStatusChange(TaskStatus.POSTPONED, 1, settings.motivatorMode)
-                )
+                vm.showReaction(MarsMotivator.reactionForPostpone(settings.motivatorMode))
             }
         }
     }
@@ -564,7 +614,6 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
     }
 
     val displayMood = reaction?.mood ?: moodOverride ?: mood
-    val todayDate = remember { LocalDate.now() }
     val marsAlpha = when {
         reaction != null -> 0.82f
         tasks.isEmpty() -> 0.58f
@@ -596,104 +645,108 @@ private fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 contentPadding = PaddingValues(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-            item {
-                Column(modifier = pagePad.padding(top = 16.dp, bottom = 4.dp)) {
-                    Text(
-                        text = "Ежедневник Марса",
-                        color = MarsOrange,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Сегодня",
-                        color = MarsWhite,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 32.sp,
-                        lineHeight = 36.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = dateLabel,
-                        color = MarsMuted,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-            item {
-                TodayStatsPanel(summary = summary, modifier = pagePad)
-            }
-            item {
-                Row(modifier = pagePad.horizontalScroll(rememberScrollState())) {
-                    FilterChipRow(filter) { filter = it }
-                }
-            }
-            item {
-                MarsSecondaryButton(
-                    "Синхронизировать с ПК",
-                    onClick = { nav.navigate(Routes.Sync) },
-                    modifier = pagePad
-                )
-            }
-            if (voiceMessage != null) {
                 item {
-                    Text(voiceMessage!!, color = MarsPeach, fontSize = 13.sp, modifier = pagePad)
+                    Column(modifier = pagePad.padding(top = 16.dp, bottom = 4.dp)) {
+                        Text(
+                            text = "Ежедневник Марса",
+                            color = palette.accent,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Сегодня",
+                            color = palette.text,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 32.sp,
+                            lineHeight = 36.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = dateLabel, color = palette.textMuted, fontSize = 14.sp)
+                    }
                 }
-            }
-            if (tasks.isEmpty()) {
                 item {
+                    TodayStatsPanel(summary = summary, modifier = pagePad)
+                }
+                item {
+                    Row(modifier = pagePad.horizontalScroll(rememberScrollState())) {
+                        FilterChipRow(filter) { filter = it }
+                    }
+                }
+                if (conflicts.isNotEmpty()) {
+                    item {
+                        Column(modifier = pagePad) {
+                            Text(
+                                text = "Расхождений с ПК: ${conflicts.size}",
+                                color = StatusOverdue,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            MarsSecondaryButton(
+                                "Разобрать расхождения",
+                                onClick = { nav.navigate(Routes.Conflicts) }
+                            )
+                        }
+                    }
+                }
+                item {
+                    Row(modifier = pagePad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MarsSecondaryButton(
+                            text = if (pendingSync > 0) "Синхронизация ($pendingSync)" else "Синхронизация",
+                            onClick = { nav.navigate(Routes.Sync) }
+                        )
+                        MarsSecondaryButton("Статистика", onClick = { nav.navigate(Routes.Stats) })
+                    }
+                }
+                if (voiceMessage != null) {
+                    item {
+                        Text(voiceMessage!!, color = palette.highlight, fontSize = 13.sp, modifier = pagePad)
+                    }
+                }
+                if (tasks.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = pagePad
+                                .then(contentWidth)
+                                .padding(top = 12.dp, bottom = 8.dp)
+                        ) {
+                            Text(
+                                text = "На сегодня задач нет",
+                                color = palette.textMuted,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "День можно оставить свободным или добавить важное.",
+                                color = palette.textMuted.copy(alpha = 0.78f),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+                itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
+                    val overdue = TaskRules.isOverdue(task, todayDate)
                     Column(
                         modifier = pagePad
                             .then(contentWidth)
-                            .padding(top = 12.dp, bottom = 8.dp)
+                            .marsListItemMotion(index)
                     ) {
-                        Text(
-                            text = "На сегодня задач нет",
-                            color = MarsMuted,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium
+                        TaskCard(
+                            task = task,
+                            isOverdue = overdue,
+                            dueDateLabel = dueLabel(task.dueAtEpochMillis),
+                            projectName = vm.projectName(task.projectSyncUuid),
+                            onClick = { nav.navigate(Routes.detail(task.id)) }
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "День можно оставить свободным или добавить важное.",
-                            color = MarsMuted.copy(alpha = 0.78f),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
+                        if (reaction != null && index == 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            MarsPresenceReaction(message = reaction.message)
+                        }
                     }
                 }
-            }
-            itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
-                val progress = remember(task.id, allTasks) {
-                    val subs = allTasks.filter { it.parentTaskId == task.id }
-                    if (subs.isEmpty()) null
-                    else {
-                        val done = subs.count { it.status == TaskStatus.DONE }
-                        "Подзадачи: $done из ${subs.size} выполнено"
-                    }
-                }
-                val overdue = TaskRules.isOverdue(task, todayDate)
-                val dueLabel = task.dueDateEpochDay?.let {
-                    LocalDate.ofEpochDay(it).format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
-                }
-                Column(
-                    modifier = pagePad
-                        .then(contentWidth)
-                        .marsListItemMotion(index)
-                ) {
-                    TaskCard(
-                        task = task,
-                        isOverdue = overdue,
-                        dueDateLabel = dueLabel,
-                        onClick = { nav.navigate(Routes.detail(task.id)) },
-                        subtaskProgress = progress
-                    )
-                    if (reaction != null && index == 0) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        MarsPresenceReaction(message = reaction!!.message)
-                    }
-                }
-            }
             }
             NewTaskCtaBar(
                 onNewTask = {

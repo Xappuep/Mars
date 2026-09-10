@@ -2,234 +2,168 @@ package com.mars.planner
 
 import com.google.common.truth.Truth.assertThat
 import com.mars.planner.domain.logic.DaySummaryCalculator
+import com.mars.planner.domain.logic.MoodFromDay
 import com.mars.planner.domain.logic.StatsCalculator
+import com.mars.planner.domain.logic.TaskFiltering
 import com.mars.planner.domain.logic.TaskRules
 import com.mars.planner.domain.logic.TodayTasksSelector
-import com.mars.planner.domain.model.TaskItem
-import com.mars.planner.domain.model.TaskStatus
-import com.mars.planner.export.BackupCodec
-import com.mars.planner.motivator.MarsMotivator
+import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.MotivatorMode
+import com.mars.planner.domain.model.TaskFilter
+import com.mars.planner.domain.model.TaskItem
+import com.mars.planner.domain.model.TaskPriority
+import com.mars.planner.domain.model.TaskStatus
+import com.mars.planner.motivator.MarsMotivator
 import org.junit.Test
 import java.time.LocalDate
+import java.time.ZoneId
 
 class DomainLogicTest {
 
+    private val zone: ZoneId = ZoneId.systemDefault()
+    private val today: LocalDate = LocalDate.of(2026, 9, 9)
+
+    private fun dueAt(date: LocalDate, minutes: Int = 23 * 60 + 59): Long =
+        date.atStartOfDay(zone).plusMinutes(minutes.toLong()).toInstant().toEpochMilli()
+
+    private fun task(
+        id: Long,
+        title: String = "Задача $id",
+        status: TaskStatus = TaskStatus.OPEN,
+        due: LocalDate? = today,
+        priority: TaskPriority = TaskPriority.NORMAL,
+        updatedAt: Long = dueAt(today)
+    ) = TaskItem(
+        id = id,
+        syncUuid = "uuid-$id",
+        title = title,
+        status = status,
+        priority = priority,
+        dueAtEpochMillis = due?.let { dueAt(it) },
+        createdAt = updatedAt,
+        updatedAt = updatedAt
+    )
+
     @Test
-    fun postponeCountIncrements() {
-        assertThat(TaskRules.incrementPostpone(0)).isEqualTo(1)
-        assertThat(TaskRules.incrementPostpone(2)).isEqualTo(3)
+    fun overdueOnlyForOpenTasksWithPastDue() {
+        assertThat(TaskRules.isOverdue(task(1, due = today.minusDays(1)), today)).isTrue()
+        assertThat(TaskRules.isOverdue(task(2, due = today), today)).isFalse()
+        assertThat(TaskRules.isOverdue(task(3, due = null), today)).isFalse()
+        assertThat(
+            TaskRules.isOverdue(task(4, status = TaskStatus.DONE, due = today.minusDays(3)), today)
+        ).isFalse()
     }
 
     @Test
-    fun nestedSubtaskDepthLimited() {
-        assertThat(TaskRules.canCreateNestedSubtask(0)).isTrue()
-        assertThat(TaskRules.nextNestingLevel(0)).isEqualTo(1)
-        assertThat(TaskRules.nextNestingLevel(1)).isEqualTo(2)
-        assertThat(TaskRules.nextNestingLevel(2)).isEqualTo(2)
-    }
+    fun todayBoardKeepsOverdueFirstAndAddsTasksClosedToday() {
+        val overdue = task(1, due = today.minusDays(2))
+        val dueToday = task(2, due = today)
+        val future = task(3, due = today.plusDays(5))
+        val doneToday = task(4, status = TaskStatus.DONE, due = today.minusDays(9))
 
-    @Test
-    fun autoCompleteBlockedByIncompleteSubtasks() {
-        assertThat(TaskRules.canAutoComplete(hasIncompleteSubtasks = true)).isFalse()
-        assertThat(TaskRules.requiresCompleteConfirmation(true)).isTrue()
-        assertThat(TaskRules.canAutoComplete(hasIncompleteSubtasks = false)).isTrue()
-    }
-
-    @Test
-    fun daySummaryCountsStatuses() {
-        val today = LocalDate.of(2026, 8, 21)
-        val tasks = listOf(
-            TaskItem(title = "a", status = TaskStatus.DONE, dueDateEpochDay = today.toEpochDay()),
-            TaskItem(title = "b", status = TaskStatus.IN_PROGRESS, dueDateEpochDay = today.toEpochDay()),
-            TaskItem(title = "c", status = TaskStatus.NEW, dueDateEpochDay = today.minusDays(2).toEpochDay()),
-            TaskItem(title = "d", status = TaskStatus.POSTPONED, dueDateEpochDay = today.toEpochDay())
+        val board = TodayTasksSelector.selectDayBoard(
+            listOf(future, dueToday, overdue, doneToday),
+            today
         )
-        val summary = DaySummaryCalculator.summarize(tasks, today)
-        assertThat(summary.total).isEqualTo(4)
+
+        assertThat(board.map { it.id }).containsExactly(1L, 2L, 4L).inOrder()
+    }
+
+    @Test
+    fun daySummaryCountsOpenDoneAndOverdue() {
+        val summary = DaySummaryCalculator.summarize(
+            listOf(
+                task(1, due = today),
+                task(2, due = today.minusDays(1)),
+                task(3, status = TaskStatus.DONE, due = today)
+            ),
+            today
+        )
+
+        assertThat(summary.total).isEqualTo(3)
+        assertThat(summary.open).isEqualTo(1)
+        assertThat(summary.overdue).isEqualTo(1)
         assertThat(summary.done).isEqualTo(1)
-        assertThat(summary.inProgress).isEqualTo(1)
-        assertThat(summary.overdue).isEqualTo(1)
-        assertThat(summary.postponed).isEqualTo(1)
     }
 
     @Test
-    fun statsCompletionPercent() {
-        val today = LocalDate.of(2026, 8, 21)
+    fun filterSelectsOnlyRequestedStatuses() {
         val tasks = listOf(
-            TaskItem(
-                title = "done",
-                status = TaskStatus.DONE,
-                dueDateEpochDay = today.toEpochDay(),
-                updatedAt = today.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            task(1, due = today),
+            task(2, due = today.minusDays(1)),
+            task(3, status = TaskStatus.DONE, due = today)
+        )
+
+        assertThat(TaskFiltering.apply(tasks, TaskFilter.ALL, today)).hasSize(3)
+        assertThat(TaskFiltering.apply(tasks, TaskFilter.OPEN, today).map { it.id })
+            .containsExactly(1L, 2L)
+        assertThat(TaskFiltering.apply(tasks, TaskFilter.DONE, today).map { it.id })
+            .containsExactly(3L)
+        assertThat(TaskFiltering.apply(tasks, TaskFilter.OVERDUE, today).map { it.id })
+            .containsExactly(2L)
+    }
+
+    @Test
+    fun statsCountCompletionAndOverdue() {
+        val stats = StatsCalculator.compute(
+            listOf(
+                task(1, status = TaskStatus.DONE, due = today, updatedAt = dueAt(today)),
+                task(2, due = today),
+                task(3, due = today.minusDays(2))
             ),
-            TaskItem(
-                title = "open",
-                status = TaskStatus.NEW,
-                dueDateEpochDay = today.toEpochDay()
-            )
+            today
         )
-        val stats = StatsCalculator.compute(tasks, today, java.time.ZoneOffset.UTC)
-        assertThat(stats.completionPercent).isEqualTo(50)
-        assertThat(stats.postponeCount).isEqualTo(0)
-    }
 
-    @Test
-    fun exportImportRoundTripPreservesTasks() {
-        val tasks = listOf(
-            TaskItem(id = 1, title = "Тест", status = TaskStatus.DONE, postponeCount = 2)
-        )
-        val json = BackupCodec.toJson(tasks, emptyList(), null)
-        val parsed = BackupCodec.fromJson(json)
-        assertThat(parsed.tasks).hasSize(1)
-        assertThat(parsed.tasks.first().title).isEqualTo("Тест")
-        assertThat(parsed.tasks.first().postponeCount).isEqualTo(2)
-        assertThat(BackupCodec.parseTaskCount(json)).isEqualTo(1)
-        val csv = BackupCodec.toCsv(tasks)
-        assertThat(csv).contains("title")
-        assertThat(csv).contains("Тест")
-    }
-
-    @Test
-    fun jsonKeepsSubtasksAndEnhancementsLinkedNotAsRootOnlyPayload() {
-        val today = LocalDate.of(2026, 8, 21).toEpochDay()
-        val tasks = listOf(
-            TaskItem(
-                id = 1,
-                title = "Основная А",
-                status = TaskStatus.IN_PROGRESS,
-                priority = com.mars.planner.domain.model.TaskPriority.HIGH,
-                dueDateEpochDay = today,
-                reminderAtEpochMillis = 1_725_000_000_000L
-            ),
-            TaskItem(
-                id = 2,
-                title = "Основная Б",
-                status = TaskStatus.DONE,
-                priority = com.mars.planner.domain.model.TaskPriority.LOW,
-                dueDateEpochDay = today + 1
-            ),
-            TaskItem(
-                id = 3,
-                title = "Подзадача А1",
-                status = TaskStatus.NEW,
-                parentTaskId = 1,
-                nestingLevel = 1,
-                dueDateEpochDay = today
-            )
-        )
-        val enhancements = listOf(
-            com.mars.planner.domain.model.EnhancementIdea(
-                id = 10,
-                sourceTaskId = 1,
-                title = "Идея к А",
-                description = "Улучшить формулировку"
-            )
-        )
-        val json = BackupCodec.toJson(tasks, enhancements, com.mars.planner.data.prefs.AppSettings(userName = "Михаил"))
-        val parsed = BackupCodec.fromJson(json)
-        assertThat(parsed.tasks).hasSize(3)
-        assertThat(parsed.enhancements).hasSize(1)
-        assertThat(parsed.settings?.userName).isEqualTo("Михаил")
-        val roots = parsed.tasks.filter { it.parentTaskId == null && it.nestingLevel == 0 }
-        val subs = parsed.tasks.filter { it.parentTaskId != null }
-        assertThat(roots).hasSize(2)
-        assertThat(subs).hasSize(1)
-        assertThat(subs.first().parentTaskId).isEqualTo(1)
-        assertThat(parsed.enhancements.first().sourceTaskId).isEqualTo(1)
-        assertThat(roots.any { it.reminderAtEpochMillis != null }).isTrue()
-        val csv = BackupCodec.toCsv(TaskRules.onlyRootTasks(tasks))
-        assertThat(csv.lines().size).isEqualTo(3) // header + 2 roots
-        assertThat(csv).contains("Основная А")
-        assertThat(csv).contains("Основная Б")
-        assertThat(csv).doesNotContain("Подзадача А1")
-    }
-
-    @Test
-    fun motivatorSoftThenStrictOnRepeatedPostpone() {
-        val soft = MarsMotivator.reactionForStatusChange(
-            TaskStatus.POSTPONED, postponeCount = 1, mode = MotivatorMode.ADAPTIVE
-        )
-        val strict = MarsMotivator.reactionForStatusChange(
-            TaskStatus.POSTPONED, postponeCount = 3, mode = MotivatorMode.ADAPTIVE
-        )
-        assertThat(soft.message).contains("реальное")
-        assertThat(strict.message).contains("раз")
-    }
-
-    @Test
-    fun statsIgnoreSubtasksAsSeparateItems() {
-        val today = LocalDate.of(2026, 8, 21)
-        val tasks = listOf(
-            TaskItem(id = 1, title = "root", status = TaskStatus.DONE, dueDateEpochDay = today.toEpochDay(),
-                updatedAt = today.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()),
-            TaskItem(id = 2, title = "sub", status = TaskStatus.DONE, parentTaskId = 1, nestingLevel = 1,
-                dueDateEpochDay = today.toEpochDay(),
-                updatedAt = today.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli())
-        )
-        val stats = StatsCalculator.compute(tasks, today, java.time.ZoneOffset.UTC)
+        assertThat(stats.completedWeek).isEqualTo(1)
         assertThat(stats.completedMonth).isEqualTo(1)
-        assertThat(TaskRules.onlyRootTasks(tasks)).hasSize(1)
+        assertThat(stats.openCount).isEqualTo(2)
+        assertThat(stats.overdueCount).isEqualTo(1)
+        assertThat(stats.completionPercent).isEqualTo(33)
+        assertThat(stats.productiveStreak).isEqualTo(1)
     }
 
     @Test
-    fun todayScreenShowsTaskDueToday() {
-        val today = LocalDate.of(2026, 8, 23)
-        val tasks = listOf(
-            TaskItem(title = "тест", status = TaskStatus.NEW, dueDateEpochDay = today.toEpochDay())
+    fun moodFollowsOverdueAndCompletion() {
+        val allDone = DaySummaryCalculator.summarize(
+            listOf(task(1, status = TaskStatus.DONE, due = today)),
+            today
         )
-        val selected = TodayTasksSelector.select(tasks, today)
-        assertThat(selected).hasSize(1)
-        assertThat(selected.first().title).isEqualTo("тест")
+        assertThat(MoodFromDay.resolve(allDone)).isEqualTo(MarsMood.DONE)
+
+        val overdue = DaySummaryCalculator.summarize(
+            listOf(task(1, due = today.minusDays(1))),
+            today
+        )
+        assertThat(MoodFromDay.resolve(overdue)).isEqualTo(MarsMood.OVERDUE)
+
+        val manyOverdue = DaySummaryCalculator.summarize(
+            (1L..3L).map { task(it, due = today.minusDays(2)) },
+            today
+        )
+        assertThat(MoodFromDay.resolve(manyOverdue)).isEqualTo(MarsMood.STRICT)
     }
 
     @Test
-    fun todayScreenShowsOverdueIncompleteTask() {
-        val today = LocalDate.of(2026, 8, 23)
-        val tasks = listOf(
-            TaskItem(title = "просрочено", status = TaskStatus.NEW, dueDateEpochDay = today.minusDays(3).toEpochDay()),
-            TaskItem(title = "сегодня", status = TaskStatus.IN_PROGRESS, dueDateEpochDay = today.toEpochDay())
+    fun motivatorReactsToDoneAndPostpone() {
+        val done = MarsMotivator.reactionForStatusChange(
+            newStatus = TaskStatus.DONE,
+            overdueCount = 0,
+            mode = MotivatorMode.ADAPTIVE
         )
-        val selected = TodayTasksSelector.select(tasks, today)
-        assertThat(selected).hasSize(2)
-        assertThat(selected.first().title).isEqualTo("просрочено")
-        val summary = DaySummaryCalculator.summarize(selected, today)
-        assertThat(summary.overdue).isEqualTo(1)
-        assertThat(summary.inProgress).isEqualTo(1)
+        assertThat(done.mood).isEqualTo(MarsMood.DONE)
+        assertThat(done.message).isNotEmpty()
+
+        val postponed = MarsMotivator.reactionForPostpone(MotivatorMode.ADAPTIVE)
+        assertThat(postponed.message).isNotEmpty()
     }
 
     @Test
-    fun completedOverdueTaskNotCountedAsOverdue() {
-        val today = LocalDate.of(2026, 8, 23)
-        val task = TaskItem(
-            title = "закрыта",
-            status = TaskStatus.DONE,
-            dueDateEpochDay = today.minusDays(1).toEpochDay()
+    fun motivatorStaysSilentWhenTurnedOff() {
+        val reaction = MarsMotivator.reactionForStatusChange(
+            newStatus = TaskStatus.DONE,
+            overdueCount = 0,
+            mode = MotivatorMode.OFF
         )
-        assertThat(TaskRules.isOverdue(task, today)).isFalse()
-        assertThat(TodayTasksSelector.belongsOnToday(task, today)).isFalse()
-    }
-
-    @Test
-    fun cancelledTaskExcludedFromToday() {
-        val today = LocalDate.of(2026, 8, 23)
-        val task = TaskItem(
-            title = "отмена",
-            status = TaskStatus.CANCELLED,
-            dueDateEpochDay = today.toEpochDay()
-        )
-        assertThat(TodayTasksSelector.belongsOnToday(task, today)).isFalse()
-    }
-
-    @Test
-    fun futureTaskExcludedFromToday() {
-        val today = LocalDate.of(2026, 8, 23)
-        val task = TaskItem(
-            title = "будущее",
-            status = TaskStatus.NEW,
-            dueDateEpochDay = today.plusDays(2).toEpochDay()
-        )
-        assertThat(TodayTasksSelector.belongsOnToday(task, today)).isFalse()
-        assertThat(TodayTasksSelector.select(listOf(task), today)).isEmpty()
+        assertThat(reaction.message).isEmpty()
     }
 }

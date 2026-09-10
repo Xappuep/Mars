@@ -11,79 +11,77 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 object TaskRules {
-    fun canAutoComplete(hasIncompleteSubtasks: Boolean): Boolean = !hasIncompleteSubtasks
-
-    fun requiresCompleteConfirmation(hasIncompleteSubtasks: Boolean): Boolean =
-        hasIncompleteSubtasks
-
-    fun canCreateNestedSubtask(parentNestingLevel: Int): Boolean =
-        parentNestingLevel < 2
-
-    fun nextNestingLevel(parentNestingLevel: Int): Int =
-        (parentNestingLevel + 1).coerceAtMost(2)
-
-    fun incrementPostpone(current: Int): Int = current + 1
-
-    fun isOverdue(task: TaskItem, today: LocalDate = LocalDate.now()): Boolean {
-        val due = task.dueDateEpochDay ?: return false
-        if (task.status == TaskStatus.DONE || task.status == TaskStatus.CANCELLED) return false
-        return due < today.toEpochDay()
+    fun isOverdue(task: TaskItem, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): Boolean {
+        val due = task.dueAtEpochMillis ?: return false
+        if (task.status == TaskStatus.DONE) return false
+        val dueDay = Instant.ofEpochMilli(due).atZone(zone).toLocalDate()
+        return dueDay.isBefore(today)
     }
 
-    fun isRootTask(task: TaskItem): Boolean =
-        task.parentTaskId == null && task.nestingLevel == 0
-
-    fun onlyRootTasks(tasks: List<TaskItem>): List<TaskItem> =
-        tasks.filter { isRootTask(it) }
+    fun isDueToday(task: TaskItem, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): Boolean {
+        val due = task.dueAtEpochMillis ?: return false
+        if (task.status == TaskStatus.DONE) return false
+        val dueDay = Instant.ofEpochMilli(due).atZone(zone).toLocalDate()
+        return dueDay == today
+    }
 }
 
-/**
- * Задачи для главного экрана «Сегодня»: незавершённые корневые задачи
- * с плановой датой сегодня или раньше (просроченные — выше в списке).
- */
 object TodayTasksSelector {
-    fun belongsOnToday(task: TaskItem, today: LocalDate = LocalDate.now()): Boolean {
-        if (!TaskRules.isRootTask(task)) return false
-        if (task.status == TaskStatus.CANCELLED || task.status == TaskStatus.DONE) return false
-        val due = task.dueDateEpochDay ?: return false
-        return due <= today.toEpochDay()
+    fun belongsOnToday(task: TaskItem, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): Boolean {
+        if (task.status == TaskStatus.DONE) return false
+        val due = task.dueAtEpochMillis ?: return false
+        val dueDay = Instant.ofEpochMilli(due).atZone(zone).toLocalDate()
+        return !dueDay.isAfter(today)
     }
 
-    fun select(tasks: List<TaskItem>, today: LocalDate = LocalDate.now()): List<TaskItem> =
-        tasks.filter { belongsOnToday(it, today) }
+    fun select(tasks: List<TaskItem>, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): List<TaskItem> =
+        tasks.filter { belongsOnToday(it, today, zone) }
             .sortedWith(
                 compareBy(
-                    { if (TaskRules.isOverdue(it, today)) 0 else 1 },
-                    { it.dueDateEpochDay ?: Long.MAX_VALUE },
-                    { -it.priority.ordinal },
+                    { if (TaskRules.isOverdue(it, today, zone)) 0 else 1 },
+                    { it.dueAtEpochMillis ?: Long.MAX_VALUE },
+                    { -it.priority.rank },
                     { -it.updatedAt }
                 )
             )
+
+    /**
+     * Список «Сегодня» вместе с закрытыми сегодня задачами — чтобы фильтр
+     * «Выполнено» и счётчик «Готово» показывали результат дня.
+     */
+    fun selectDayBoard(
+        tasks: List<TaskItem>,
+        today: LocalDate = LocalDate.now(),
+        zone: ZoneId = ZoneId.systemDefault()
+    ): List<TaskItem> {
+        val open = select(tasks, today, zone)
+        val doneToday = tasks.filter { task ->
+            task.status == TaskStatus.DONE && dayOf(task.updatedAt, zone) == today
+        }.sortedByDescending { it.updatedAt }
+        return open + doneToday
+    }
+
+    private fun dayOf(millis: Long, zone: ZoneId): LocalDate =
+        Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
 }
 
 object DaySummaryCalculator {
-    fun summarize(tasks: List<TaskItem>, today: LocalDate = LocalDate.now()): DaySummary {
+    fun summarize(tasks: List<TaskItem>, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): DaySummary {
         var done = 0
-        var inProgress = 0
         var overdue = 0
-        var postponed = 0
-        var newCount = 0
+        var open = 0
         tasks.forEach { task ->
             when {
                 task.status == TaskStatus.DONE -> done++
-                TaskRules.isOverdue(task, today) -> overdue++
-                task.status == TaskStatus.IN_PROGRESS -> inProgress++
-                task.status == TaskStatus.POSTPONED -> postponed++
-                task.status == TaskStatus.NEW -> newCount++
+                TaskRules.isOverdue(task, today, zone) -> overdue++
+                else -> open++
             }
         }
         return DaySummary(
             total = tasks.size,
             done = done,
-            inProgress = inProgress,
-            overdue = overdue,
-            postponed = postponed,
-            newCount = newCount
+            open = open,
+            overdue = overdue
         )
     }
 }
@@ -94,40 +92,33 @@ object StatsCalculator {
         today: LocalDate = LocalDate.now(),
         zoneId: ZoneId = ZoneId.systemDefault()
     ): StatsSnapshot {
-        val roots = TaskRules.onlyRootTasks(tasks)
-        val weekStart = today.with(DayOfWeek.MONDAY).toEpochDay()
-        val monthStart = today.withDayOfMonth(1).toEpochDay()
-        val todayDay = today.toEpochDay()
-
-        val completedWeek = roots.count {
+        val weekStart = today.with(DayOfWeek.MONDAY)
+        val monthStart = today.withDayOfMonth(1)
+        val completedWeek = tasks.count {
             it.status == TaskStatus.DONE &&
-                dayOf(it.updatedAt, zoneId) in weekStart..todayDay
+                dayOf(it.updatedAt, zoneId) in weekStart.toEpochDay()..today.toEpochDay()
         }
-        val completedMonth = roots.count {
+        val completedMonth = tasks.count {
             it.status == TaskStatus.DONE &&
-                dayOf(it.updatedAt, zoneId) in monthStart..todayDay
+                dayOf(it.updatedAt, zoneId) in monthStart.toEpochDay()..today.toEpochDay()
         }
-        val postponeCount = roots.sumOf { it.postponeCount }
-        val overdueCount = roots.count { TaskRules.isOverdue(it, today) }
-
-        val periodTasks = roots.filter { task ->
-            val due = task.dueDateEpochDay
-            due != null && due in monthStart..todayDay
+        val overdueCount = tasks.count { TaskRules.isOverdue(it, today, zoneId) }
+        val periodTasks = tasks.filter { task ->
+            val due = task.dueAtEpochMillis ?: return@filter false
+            val d = dayOf(due, zoneId)
+            d in monthStart.toEpochDay()..today.toEpochDay()
         }
-        val completionPercent = if (periodTasks.isEmpty()) {
-            0
-        } else {
+        val completionPercent = if (periodTasks.isEmpty()) 0 else {
             val done = periodTasks.count { it.status == TaskStatus.DONE }
             ((done.toDouble() / periodTasks.size) * 100).toInt()
         }
-
         return StatsSnapshot(
             completedWeek = completedWeek,
             completedMonth = completedMonth,
-            postponeCount = postponeCount,
+            openCount = tasks.count { it.status != TaskStatus.DONE },
             overdueCount = overdueCount,
             completionPercent = completionPercent,
-            productiveStreak = productiveStreak(roots, today, zoneId)
+            productiveStreak = productiveStreak(tasks, today, zoneId)
         )
     }
 
@@ -136,17 +127,12 @@ object StatsCalculator {
         today: LocalDate = LocalDate.now(),
         zoneId: ZoneId = ZoneId.systemDefault()
     ): Int {
-        val roots = TaskRules.onlyRootTasks(tasks)
         var streak = 0
         var cursor = today
         while (true) {
             val day = cursor.toEpochDay()
-            val productive = roots.any { task ->
-                task.status == TaskStatus.DONE &&
-                    task.dueDateEpochDay == day &&
-                    dayOf(task.updatedAt, zoneId) == day
-            } || roots.any { task ->
-                task.status == TaskStatus.DONE && dayOf(task.updatedAt, zoneId) == day
+            val productive = tasks.any {
+                it.status == TaskStatus.DONE && dayOf(it.updatedAt, zoneId) == day
             }
             if (!productive) break
             streak++
@@ -165,8 +151,22 @@ object MoodFromDay {
         summary.overdue >= 3 -> MarsMood.STRICT
         summary.overdue > 0 -> MarsMood.OVERDUE
         summary.done > 0 && summary.done == summary.total && summary.total > 0 -> MarsMood.DONE
-        summary.inProgress > 0 -> MarsMood.WORKING
-        summary.postponed > 0 -> MarsMood.POSTPONED
+        summary.open > 0 -> MarsMood.WORKING
         else -> MarsMood.DEFAULT
+    }
+}
+
+/** Отбор задач по фильтру списка. */
+object TaskFiltering {
+    fun apply(
+        tasks: List<TaskItem>,
+        filter: com.mars.planner.domain.model.TaskFilter,
+        today: LocalDate = LocalDate.now(),
+        zone: ZoneId = ZoneId.systemDefault()
+    ): List<TaskItem> = when (filter) {
+        com.mars.planner.domain.model.TaskFilter.ALL -> tasks
+        com.mars.planner.domain.model.TaskFilter.OPEN -> tasks.filter { it.status == TaskStatus.OPEN }
+        com.mars.planner.domain.model.TaskFilter.DONE -> tasks.filter { it.status == TaskStatus.DONE }
+        com.mars.planner.domain.model.TaskFilter.OVERDUE -> tasks.filter { TaskRules.isOverdue(it, today, zone) }
     }
 }

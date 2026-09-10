@@ -1,68 +1,82 @@
 package com.mars.planner.domain.model
 
-data class TaskItem(
+data class ProjectItem(
     val id: Long = 0L,
-    val title: String,
+    val syncUuid: String,
+    val name: String,
     val description: String = "",
-    val dueDateEpochDay: Long? = null,
-    val dueTimeMinutes: Int? = null,
-    val reminderAtEpochMillis: Long? = null,
-    val priority: TaskPriority = TaskPriority.NORMAL,
-    val category: String = "",
-    val status: TaskStatus = TaskStatus.NEW,
+    val archived: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
+    /** Исходная строка `created_at` для совместимого `version_hash`. */
+    val createdAtRawUtc: String? = null,
     val updatedAt: Long = System.currentTimeMillis(),
-    val postponeCount: Int = 0,
-    val postponeReason: String? = null,
-    val parentTaskId: Long? = null,
-    /** Глубина вложенности подзадач: 0 — корневая, 1 — подзадача, 2 — вложенная подзадача (макс.) */
-    val nestingLevel: Int = 0,
-    val relatedToTaskId: Long? = null,
     val isDemo: Boolean = false
 )
 
-data class EnhancementIdea(
+data class TaskItem(
     val id: Long = 0L,
-    val sourceTaskId: Long,
+    val syncUuid: String,
     val title: String,
     val description: String = "",
-    val status: EnhancementStatus = EnhancementStatus.IDEA,
+    val projectSyncUuid: String? = null,
     val priority: TaskPriority = TaskPriority.NORMAL,
+    /** Срок как epoch millis UTC, либо null. */
+    val dueAtEpochMillis: Long? = null,
+    /** Исходная строка `due_at` для совместимого `version_hash`. */
+    val dueAtRawUtc: String? = null,
+    val status: TaskStatus = TaskStatus.OPEN,
     val createdAt: Long = System.currentTimeMillis(),
-    val plannedDateEpochDay: Long? = null,
-    val deferredReason: String? = null,
-    val convertedTaskId: Long? = null
+    /** Исходная строка `created_at` для совместимого `version_hash`. */
+    val createdAtRawUtc: String? = null,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isDemo: Boolean = false
 )
 
-data class TaskWithDetails(
-    val task: TaskItem,
-    val subtasks: List<TaskItem> = emptyList(),
-    val enhancements: List<EnhancementIdea> = emptyList()
+data class ProjectWithStats(
+    val project: ProjectItem,
+    val totalTasks: Int,
+    val doneTasks: Int
 ) {
-    val completedSubtasks: Int get() = subtasks.count { it.status == TaskStatus.DONE }
-    val totalSubtasks: Int get() = subtasks.size
-    val hasIncompleteSubtasks: Boolean get() =
-        subtasks.any { it.status != TaskStatus.DONE && it.status != TaskStatus.CANCELLED }
-
-    fun subtaskProgressLabel(): String {
-        return "Подзадачи: $completedSubtasks из $totalSubtasks выполнено"
-    }
+    val progressPercent: Int
+        get() = if (totalTasks == 0) 0 else ((doneTasks.toDouble() / totalTasks) * 100).toInt()
 }
 
 data class DaySummary(
     val total: Int = 0,
     val done: Int = 0,
-    val inProgress: Int = 0,
-    val overdue: Int = 0,
-    val postponed: Int = 0,
-    val newCount: Int = 0
+    val open: Int = 0,
+    val overdue: Int = 0
 )
 
 data class StatsSnapshot(
-    val completedWeek: Int,
-    val completedMonth: Int,
-    val postponeCount: Int,
-    val overdueCount: Int,
-    val completionPercent: Int,
-    val productiveStreak: Int
+    val completedWeek: Int = 0,
+    val completedMonth: Int = 0,
+    val openCount: Int = 0,
+    val overdueCount: Int = 0,
+    val completionPercent: Int = 0,
+    val productiveStreak: Int = 0
+)
+
+data class SyncConflictItem(
+    val id: Long = 0L,
+    val entityType: SyncEntityType,
+    val entityUuid: String,
+    val localPayloadJson: String?,
+    val remotePayloadJson: String?,
+    val localOp: String,
+    val remoteOp: String,
+    val packageId: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val resolved: Boolean = false
+)
+
+data class MigrationReport(
+    val projectsCreated: Int,
+    val tasksMigrated: Int,
+    val subtasksConverted: Int,
+    val enhancementsConverted: Int,
+    val cancelledToDone: Int,
+    val dueAt2359Count: Int,
+    val archivePath: String,
+    val shown: Boolean = false
 )

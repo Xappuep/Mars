@@ -3,52 +3,66 @@ package com.mars.planner.export
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.mars.planner.data.prefs.AppSettings
-import com.mars.planner.domain.model.EnhancementIdea
-import com.mars.planner.domain.model.EnhancementStatus
+import com.mars.planner.domain.model.AppTheme
+import com.mars.planner.domain.model.EffectIntensity
 import com.mars.planner.domain.model.MotivatorMode
+import com.mars.planner.domain.model.ProjectItem
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskPriority
 import com.mars.planner.domain.model.TaskStatus
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.util.UUID
+
+const val BACKUP_FORMAT_VERSION = 2
 
 data class BackupPayload(
-    val version: Int = 1,
+    val version: Int = BACKUP_FORMAT_VERSION,
     val exportedAt: Long = System.currentTimeMillis(),
+    val projects: List<ProjectDto> = emptyList(),
     val tasks: List<TaskDto> = emptyList(),
-    val enhancements: List<EnhancementDto> = emptyList(),
-    val settings: SettingsDto? = null
+    val settings: SettingsDto? = null,
+    /** Только для чтения архивов Mars v1 — дополнения переносятся в задачи. */
+    val enhancements: List<LegacyEnhancementDto> = emptyList()
+)
+
+data class ProjectDto(
+    val syncUuid: String = "",
+    val name: String = "",
+    val description: String = "",
+    val archived: Boolean = false,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0
 )
 
 data class TaskDto(
-    val id: Long = 0,
-    val title: String,
+    val syncUuid: String = "",
+    val title: String = "",
     val description: String = "",
-    val dueDateEpochDay: Long? = null,
-    val dueTimeMinutes: Int? = null,
-    val reminderAtEpochMillis: Long? = null,
-    val priority: String = "normal",
-    val category: String = "",
-    val status: String = "new",
+    val projectSyncUuid: String? = null,
+    val priority: String = TaskPriority.NORMAL.key,
+    val dueAtEpochMillis: Long? = null,
+    val status: String = TaskStatus.OPEN.key,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
-    val postponeCount: Int = 0,
-    val postponeReason: String? = null,
+    // ——— Поля формата Mars v1, используются только при импорте старых копий ———
+    val dueDateEpochDay: Long? = null,
+    val dueTimeMinutes: Int? = null,
+    val category: String? = null,
     val parentTaskId: Long? = null,
-    val nestingLevel: Int = 0,
-    val relatedToTaskId: Long? = null,
-    val isDemo: Boolean = false
+    val id: Long = 0
 )
 
-data class EnhancementDto(
+data class LegacyEnhancementDto(
     val id: Long = 0,
-    val sourceTaskId: Long,
-    val title: String,
+    val sourceTaskId: Long = 0,
+    val title: String = "",
     val description: String = "",
     val status: String = "idea",
-    val priority: String = "normal",
+    val priority: String = TaskPriority.NORMAL.key,
     val createdAt: Long = 0,
-    val plannedDateEpochDay: Long? = null,
-    val deferredReason: String? = null,
-    val convertedTaskId: Long? = null
+    val plannedDateEpochDay: Long? = null
 )
 
 data class SettingsDto(
@@ -60,7 +74,17 @@ data class SettingsDto(
     val eveningReminderHour: Int = 21,
     val eveningReminderMinute: Int = 0,
     val defaultSnoozeMinutes: Int = 30,
-    val userName: String = ""
+    val userName: String = "",
+    val theme: String = AppTheme.ORBIT.key,
+    val effectIntensity: String = EffectIntensity.NORMAL.key,
+    val reduceAnimations: Boolean = false
+)
+
+/** Результат разбора резервной копии, готовый к записи в базу. */
+data class ImportModels(
+    val projects: List<ProjectItem>,
+    val tasks: List<TaskItem>,
+    val migratedFromV1: Boolean
 )
 
 object BackupCodec {
@@ -68,42 +92,37 @@ object BackupCodec {
 
     fun toJson(
         tasks: List<TaskItem>,
-        enhancements: List<EnhancementIdea>,
+        projects: List<ProjectItem>,
         settings: AppSettings?
     ): String {
         val payload = BackupPayload(
+            projects = projects.map { it.toDto() },
             tasks = tasks.map { it.toDto() },
-            enhancements = enhancements.map { it.toDto() },
             settings = settings?.toDto()
         )
         return gson.toJson(payload)
     }
 
-    fun fromJson(json: String): BackupPayload = gson.fromJson(json, BackupPayload::class.java)
+    fun fromJson(json: String): BackupPayload =
+        gson.fromJson(json, BackupPayload::class.java) ?: BackupPayload()
 
-    fun toCsv(tasks: List<TaskItem>): String {
+    fun toCsv(projects: List<ProjectItem>, tasks: List<TaskItem>): String {
+        val projectNames = projects.associate { it.syncUuid to it.name }
         val header = listOf(
-            "id", "title", "description", "due_date", "due_time", "priority",
-            "category", "status", "created_at", "updated_at", "postpone_count",
-            "postpone_reason", "parent_task_id", "nesting_level", "related_to_task_id"
+            "sync_uuid", "title", "description", "project", "priority",
+            "due_at", "status", "created_at", "updated_at"
         ).joinToString(",")
         val rows = tasks.map { t ->
             listOf(
-                t.id,
+                t.syncUuid,
                 escape(t.title),
                 escape(t.description),
-                t.dueDateEpochDay ?: "",
-                t.dueTimeMinutes ?: "",
+                escape(t.projectSyncUuid?.let { projectNames[it] } ?: ""),
                 t.priority.key,
-                escape(t.category),
+                t.dueAtEpochMillis?.toString() ?: "",
                 t.status.key,
-                t.createdAt,
-                t.updatedAt,
-                t.postponeCount,
-                escape(t.postponeReason ?: ""),
-                t.parentTaskId ?: "",
-                t.nestingLevel,
-                t.relatedToTaskId ?: ""
+                t.createdAt.toString(),
+                t.updatedAt.toString()
             ).joinToString(",")
         }
         return (listOf(header) + rows).joinToString("\n")
@@ -111,77 +130,129 @@ object BackupCodec {
 
     fun parseTaskCount(json: String): Int = fromJson(json).tasks.size
 
+    /**
+     * Приводит любую поддерживаемую копию к текущей модели.
+     * Копии Mars v1 (категории, подзадачи, дополнения) преобразуются:
+     * категория → проект, подзадача и дополнение → отдельная задача с пометкой в описании.
+     */
+    fun toModels(
+        payload: BackupPayload,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): ImportModels {
+        val legacy = payload.version < BACKUP_FORMAT_VERSION ||
+            payload.tasks.any { it.syncUuid.isBlank() } ||
+            payload.enhancements.isNotEmpty()
+
+        val projects = payload.projects.map { it.toDomain() }.toMutableList()
+        val projectByName = projects.associateBy { it.name }.toMutableMap()
+        val now = System.currentTimeMillis()
+
+        fun projectUuidForCategory(category: String?): String? {
+            val name = category?.trim().orEmpty()
+            if (name.isEmpty()) return null
+            projectByName[name]?.let { return it.syncUuid }
+            val created = ProjectItem(
+                syncUuid = UUID.randomUUID().toString(),
+                name = name,
+                createdAt = now,
+                updatedAt = now
+            )
+            projects += created
+            projectByName[name] = created
+            return created.syncUuid
+        }
+
+        val titleById = payload.tasks.associate { it.id to it.title }
+        val tasks = mutableListOf<TaskItem>()
+
+        payload.tasks.forEach { dto ->
+            val dueAt = dto.dueAtEpochMillis ?: dueAtFromLegacy(dto.dueDateEpochDay, dto.dueTimeMinutes, zone)
+            var description = dto.description
+            if (dto.parentTaskId != null) {
+                val parentTitle = titleById[dto.parentTaskId] ?: "№${dto.parentTaskId}"
+                val note = "Ранее подзадача задачи «$parentTitle»."
+                description = if (description.isBlank()) note else "$description\n\n$note"
+            }
+            tasks += TaskItem(
+                syncUuid = dto.syncUuid.ifBlank { UUID.randomUUID().toString() },
+                title = dto.title,
+                description = description,
+                projectSyncUuid = dto.projectSyncUuid ?: projectUuidForCategory(dto.category),
+                priority = TaskPriority.fromKey(dto.priority),
+                dueAtEpochMillis = dueAt,
+                status = TaskStatus.fromLegacyKey(dto.status),
+                createdAt = if (dto.createdAt == 0L) now else dto.createdAt,
+                updatedAt = if (dto.updatedAt == 0L) now else dto.updatedAt
+            )
+        }
+
+        payload.enhancements.forEach { dto ->
+            val sourceTitle = titleById[dto.sourceTaskId] ?: "№${dto.sourceTaskId}"
+            val note = "Ранее дополнение к задаче «$sourceTitle»."
+            val description = if (dto.description.isBlank()) note else "${dto.description}\n\n$note"
+            tasks += TaskItem(
+                syncUuid = UUID.randomUUID().toString(),
+                title = dto.title,
+                description = description,
+                projectSyncUuid = null,
+                priority = TaskPriority.fromKey(dto.priority),
+                dueAtEpochMillis = dueAtFromLegacy(dto.plannedDateEpochDay, null, zone),
+                status = if (dto.status in listOf("realized", "cancelled")) TaskStatus.DONE else TaskStatus.OPEN,
+                createdAt = if (dto.createdAt == 0L) now else dto.createdAt,
+                updatedAt = now
+            )
+        }
+
+        return ImportModels(projects = projects, tasks = tasks, migratedFromV1 = legacy)
+    }
+
+    private fun dueAtFromLegacy(day: Long?, timeMinutes: Int?, zone: ZoneId): Long? {
+        if (day == null) return null
+        val date = LocalDate.ofEpochDay(day)
+        val time = if (timeMinutes != null) {
+            LocalTime.of(timeMinutes / 60, timeMinutes % 60)
+        } else {
+            LocalTime.of(23, 59)
+        }
+        return date.atTime(time).atZone(zone).toInstant().toEpochMilli()
+    }
+
     private fun escape(value: String): String {
-        val needsQuotes = value.contains(',') || value.contains('"') || value.contains('\n')
-        val escaped = value.replace("\"", "\"\"")
+        val flat = value.replace("\n", " ")
+        val needsQuotes = flat.contains(',') || flat.contains('"')
+        val escaped = flat.replace("\"", "\"\"")
         return if (needsQuotes) "\"$escaped\"" else escaped
     }
 }
 
+fun ProjectItem.toDto() = ProjectDto(
+    syncUuid = syncUuid,
+    name = name,
+    description = description,
+    archived = archived,
+    createdAt = createdAt,
+    updatedAt = updatedAt
+)
+
+fun ProjectDto.toDomain() = ProjectItem(
+    syncUuid = syncUuid.ifBlank { UUID.randomUUID().toString() },
+    name = name,
+    description = description,
+    archived = archived,
+    createdAt = if (createdAt == 0L) System.currentTimeMillis() else createdAt,
+    updatedAt = if (updatedAt == 0L) System.currentTimeMillis() else updatedAt
+)
+
 fun TaskItem.toDto() = TaskDto(
-    id = id,
+    syncUuid = syncUuid,
     title = title,
     description = description,
-    dueDateEpochDay = dueDateEpochDay,
-    dueTimeMinutes = dueTimeMinutes,
-    reminderAtEpochMillis = reminderAtEpochMillis,
+    projectSyncUuid = projectSyncUuid,
     priority = priority.key,
-    category = category,
+    dueAtEpochMillis = dueAtEpochMillis,
     status = status.key,
     createdAt = createdAt,
-    updatedAt = updatedAt,
-    postponeCount = postponeCount,
-    postponeReason = postponeReason,
-    parentTaskId = parentTaskId,
-    nestingLevel = nestingLevel,
-    relatedToTaskId = relatedToTaskId,
-    isDemo = isDemo
-)
-
-fun TaskDto.toDomain() = TaskItem(
-    id = id,
-    title = title,
-    description = description,
-    dueDateEpochDay = dueDateEpochDay,
-    dueTimeMinutes = dueTimeMinutes,
-    reminderAtEpochMillis = reminderAtEpochMillis,
-    priority = TaskPriority.fromKey(priority),
-    category = category,
-    status = TaskStatus.fromKey(status),
-    createdAt = createdAt,
-    updatedAt = updatedAt,
-    postponeCount = postponeCount,
-    postponeReason = postponeReason,
-    parentTaskId = parentTaskId,
-    nestingLevel = nestingLevel,
-    relatedToTaskId = relatedToTaskId,
-    isDemo = isDemo
-)
-
-fun EnhancementIdea.toDto() = EnhancementDto(
-    id = id,
-    sourceTaskId = sourceTaskId,
-    title = title,
-    description = description,
-    status = status.key,
-    priority = priority.key,
-    createdAt = createdAt,
-    plannedDateEpochDay = plannedDateEpochDay,
-    deferredReason = deferredReason,
-    convertedTaskId = convertedTaskId
-)
-
-fun EnhancementDto.toDomain() = EnhancementIdea(
-    id = id,
-    sourceTaskId = sourceTaskId,
-    title = title,
-    description = description,
-    status = EnhancementStatus.fromKey(status),
-    priority = TaskPriority.fromKey(priority),
-    createdAt = createdAt,
-    plannedDateEpochDay = plannedDateEpochDay,
-    deferredReason = deferredReason,
-    convertedTaskId = convertedTaskId
+    updatedAt = updatedAt
 )
 
 fun AppSettings.toDto() = SettingsDto(
@@ -193,7 +264,10 @@ fun AppSettings.toDto() = SettingsDto(
     eveningReminderHour = eveningReminderHour,
     eveningReminderMinute = eveningReminderMinute,
     defaultSnoozeMinutes = defaultSnoozeMinutes,
-    userName = userName
+    userName = userName,
+    theme = AppTheme.fromKey(themeId).key,
+    effectIntensity = EffectIntensity.fromFactor(effectIntensity).key,
+    reduceAnimations = reduceAnimations
 )
 
 fun SettingsDto.toAppSettings(base: AppSettings = AppSettings()): AppSettings = base.copy(
@@ -205,5 +279,8 @@ fun SettingsDto.toAppSettings(base: AppSettings = AppSettings()): AppSettings = 
     eveningReminderHour = eveningReminderHour,
     eveningReminderMinute = eveningReminderMinute,
     defaultSnoozeMinutes = defaultSnoozeMinutes,
-    userName = userName
+    userName = userName,
+    themeId = AppTheme.fromKey(theme).key,
+    effectIntensity = EffectIntensity.fromKey(effectIntensity).factor,
+    reduceAnimations = reduceAnimations
 )

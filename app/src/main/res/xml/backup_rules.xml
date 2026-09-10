@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Секреты сопряжения зашифрованы ключом Android Keystore и вне устройства бесполезны. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="mars_sync_secure.xml" />
+</full-backup-content>

@@ -79,15 +79,22 @@ fun MarsAmbientBackground(
     content: @Composable () -> Unit
 ) {
     val reduce = LocalReduceAnimations.current
+    val palette = LocalMarsPalette.current
+    val effects = LocalEffectIntensity.current
     Box(modifier = modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             drawRect(
                 brush = Brush.verticalGradient(
-                    listOf(MarsGraphiteDeep, MarsGraphiteMid, MarsGraphite, MarsGraphiteElevated.copy(alpha = 0.6f))
+                    listOf(
+                        palette.backgroundDeep,
+                        palette.backgroundMid,
+                        palette.background,
+                        palette.backgroundElevated.copy(alpha = 0.6f)
+                    )
                 )
             )
-            // Лёгкое осветление зоны контента (слева), без оранжевого у Марса.
-            val contentLift = if (!reduce) 0.04f else 0.025f
+            // Лёгкое осветление зоны контента (слева), без цветного пятна у Марса.
+            val contentLift = effects.scale(if (!reduce) 0.04f else 0.025f)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -101,7 +108,7 @@ fun MarsAmbientBackground(
                 center = Offset(size.width * 0.22f, size.height * 0.18f)
             )
         }
-        if (!reduce) {
+        if (!reduce && effects.factor > 0f) {
             val infinite = rememberInfiniteTransition(label = "ambient")
             val drift by infinite.animateFloat(
                 initialValue = 0f,
@@ -173,34 +180,39 @@ fun TodayStatsPanel(
     summary: DaySummary,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalMarsPalette.current
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(MarsGlass)
-            .border(1.dp, Color(0xFF3A3A48).copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+            .background(palette.glass)
+            .border(1.dp, MarsOutline.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
             .padding(horizontal = 6.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        TodayStatCell("Всего", summary.total, MarsWhite)
+        TodayStatCell("Всего", summary.total, palette.text)
         TodayStatCell("Готово", summary.done, StatusDone)
-        TodayStatCell("В работе", summary.inProgress, MarsAccentProgress)
-        TodayStatCell("Просрочено", summary.overdue, StatusNotDone)
+        TodayStatCell("Открыто", summary.open, StatusOpen)
+        TodayStatCell("Просрочено", summary.overdue, StatusOverdue)
     }
 }
 
 @Composable
 private fun TodayStatCell(label: String, value: Int, accent: Color) {
+    val palette = LocalMarsPalette.current
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF181820).copy(alpha = 0.55f))
+            .background(
+                if (palette.isLight) palette.card.copy(alpha = 0.92f)
+                else Color(0xFF181820).copy(alpha = 0.55f)
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
             AnimatedCounterText(value = value, color = accent, fontSize = 17.sp)
-            Text(text = label, color = MarsMuted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+            Text(text = label, color = palette.textMuted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -245,6 +257,7 @@ fun MarsBottomNavigationBar(
     onNavigate: (String) -> Unit
 ) {
     val reduce = LocalReduceAnimations.current
+    val palette = LocalMarsPalette.current
     val selectedIndex = items.indexOfFirst { it.first == route }.coerceAtLeast(0)
     val animatedIndex by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
@@ -254,11 +267,11 @@ fun MarsBottomNavigationBar(
 
     Box {
         NavigationBar(
-            containerColor = MarsCardDark.copy(alpha = 0.94f),
+            containerColor = palette.card.copy(alpha = 0.94f),
             modifier = Modifier.border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
-                    listOf(Color(0xFF3A3A48).copy(alpha = 0.5f), Color.Transparent)
+                    listOf(MarsOutline.copy(alpha = 0.5f), Color.Transparent)
                 ),
                 shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
             )
@@ -270,11 +283,11 @@ fun MarsBottomNavigationBar(
                     icon = { androidx.compose.material3.Icon(icon, contentDescription = label) },
                     label = { Text(label, fontSize = 10.sp) },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MarsOrange,
-                        selectedTextColor = MarsOrange,
-                        indicatorColor = MarsOrange.copy(alpha = 0.14f),
-                        unselectedIconColor = MarsMuted,
-                        unselectedTextColor = MarsMuted
+                        selectedIconColor = palette.accent,
+                        selectedTextColor = palette.accent,
+                        indicatorColor = palette.accent.copy(alpha = 0.14f),
+                        unselectedIconColor = palette.textMuted,
+                        unselectedTextColor = palette.textMuted
                     )
                 )
             }
@@ -298,9 +311,9 @@ fun MarsBottomNavigationBar(
                             Brush.horizontalGradient(
                                 listOf(
                                     Color.Transparent,
-                                    MarsOrange.copy(alpha = 0.35f),
-                                    MarsGoldGlow.copy(alpha = 0.95f),
-                                    MarsOrange.copy(alpha = 0.35f),
+                                    palette.accent.copy(alpha = 0.35f),
+                                    palette.highlight.copy(alpha = 0.95f),
+                                    palette.accent.copy(alpha = 0.35f),
                                     Color.Transparent
                                 )
                             )
@@ -322,7 +335,7 @@ fun MarsBottomNavigationBar(
                         .offset(x = x)
                         .width(lineWidth)
                         .height(2.dp)
-                        .background(MarsOrange.copy(alpha = 0.75f))
+                        .background(palette.accent.copy(alpha = 0.75f))
                 )
             }
         }

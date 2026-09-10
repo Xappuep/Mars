@@ -18,9 +18,12 @@ import androidx.work.WorkerParameters
 import com.mars.planner.MainActivity
 import com.mars.planner.MarsApplication
 import com.mars.planner.R
+import com.mars.planner.domain.logic.TaskRules
+import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -82,6 +85,34 @@ object ReminderScheduler {
         context.getSystemService(AlarmManager::class.java).cancel(pending)
     }
 
+    /**
+     * Напоминание задачи = её срок. Открытые задачи с будущим сроком получают
+     * будильник, выполненные и просроченные — снимаются.
+     * Вызывается после сохранения задачи, после приёма изменений с ПК и при загрузке системы.
+     */
+    fun syncTaskReminders(
+        context: Context,
+        tasks: List<TaskItem>,
+        snoozeMinutes: Int = 30,
+        now: Long = System.currentTimeMillis()
+    ) {
+        tasks.forEach { task ->
+            val due = task.dueAtEpochMillis
+            if (task.status == TaskStatus.OPEN && due != null && due > now) {
+                scheduleTaskReminder(context, task.id, task.title, due, snoozeMinutes)
+            } else {
+                cancelTaskReminder(context, task.id)
+            }
+        }
+    }
+
+    fun applyTaskReminder(
+        context: Context,
+        task: TaskItem,
+        snoozeMinutes: Int = 30,
+        now: Long = System.currentTimeMillis()
+    ) = syncTaskReminders(context, listOf(task), snoozeMinutes, now)
+
     fun scheduleDigestWorkers(context: Context) {
         val request = PeriodicWorkRequestBuilder<DigestWorker>(12, TimeUnit.HOURS).build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -116,8 +147,10 @@ class ReminderActionReceiver : BroadcastReceiver() {
                     try {
                         val app = context.applicationContext as MarsApplication
                         runBlocking {
-                            app.container.tasks.updateStatus(taskId, TaskStatus.DONE)
+                            // Смена статуса через репозиторий создаёт операцию для «Рубежа».
+                            app.container.planner.setTaskStatus(taskId, TaskStatus.DONE)
                         }
+                        ReminderScheduler.cancelTaskReminder(context, taskId)
                         NotificationManagerCompat.from(context).cancel(taskId.toInt())
                     } finally {
                         pending.finish()
@@ -127,7 +160,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
             ReminderScheduler.ACTION_SNOOZE -> {
                 val minutes = intent.getIntExtra(ReminderScheduler.EXTRA_SNOOZE_MIN, 30)
                 val at = System.currentTimeMillis() + minutes * 60_000L
-                ReminderScheduler.scheduleTaskReminder(context, taskId, title, at)
+                ReminderScheduler.scheduleTaskReminder(context, taskId, title, at, minutes)
                 NotificationManagerCompat.from(context).cancel(taskId.toInt())
             }
             ReminderScheduler.ACTION_OPEN -> {
@@ -201,6 +234,19 @@ class BootCompletedReceiver : BroadcastReceiver() {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
         ReminderChannels.ensure(context)
         ReminderScheduler.scheduleDigestWorkers(context)
+        val pending = goAsync()
+        Thread {
+            try {
+                val app = context.applicationContext as MarsApplication
+                runBlocking {
+                    val snooze = app.container.settings.settings.first().defaultSnoozeMinutes
+                    val (tasks, _) = app.container.planner.exportSnapshot()
+                    ReminderScheduler.syncTaskReminders(context, tasks, snooze)
+                }
+            } finally {
+                pending.finish()
+            }
+        }.start()
     }
 }
 
@@ -213,10 +259,12 @@ class DigestWorker(
         val app = applicationContext as MarsApplication
         val settings = app.container.settings.settings.first()
         val now = LocalDateTime.now()
-        val today = LocalDate.now().toEpochDay()
-        val tasks = app.container.tasks.exportSnapshot().first
-            .filter { it.dueDateEpochDay == today && it.parentTaskId == null }
-            .filter { it.status != TaskStatus.DONE && it.status != TaskStatus.CANCELLED }
+        val today = LocalDate.now()
+        val (allTasks, _) = app.container.planner.exportSnapshot()
+        val todayTasks = allTasks.filter {
+            it.status == TaskStatus.OPEN &&
+                (TaskRules.isDueToday(it, today) || TaskRules.isOverdue(it, today))
+        }
 
         val morningTime = LocalTime.of(settings.morningReminderHour, settings.morningReminderMinute)
         val eveningTime = LocalTime.of(settings.eveningReminderHour, settings.eveningReminderMinute)
@@ -224,10 +272,10 @@ class DigestWorker(
         val withinEvening = kotlin.math.abs(java.time.Duration.between(now.toLocalTime(), eveningTime).toMinutes()) <= 30
 
         if (settings.morningReminderEnabled && withinMorning) {
-            val text = if (tasks.isEmpty()) {
+            val text = if (todayTasks.isEmpty()) {
                 "На сегодня задач нет — можно добавить важные."
             } else {
-                tasks.take(5).joinToString("\n") { "• ${it.title}" }
+                todayTasks.take(5).joinToString("\n") { "• ${it.title}" }
             }
             notifyDigest(1, "Утро с Марсом", text)
         }
@@ -251,8 +299,25 @@ class DigestWorker(
     }
 }
 
-fun nextReminderMillis(dateEpochDay: Long, timeMinutes: Int): Long {
-    val date = LocalDate.ofEpochDay(dateEpochDay)
-    val time = LocalTime.of(timeMinutes / 60, timeMinutes % 60)
-    return LocalDateTime.of(date, time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+/** Срок задачи как epoch millis: дата плюс время либо конец дня. */
+fun dueAtMillis(
+    date: LocalDate,
+    timeMinutes: Int?,
+    zone: ZoneId = ZoneId.systemDefault()
+): Long {
+    val time = if (timeMinutes != null) {
+        LocalTime.of(timeMinutes / 60, timeMinutes % 60)
+    } else {
+        LocalTime.of(23, 59)
+    }
+    return LocalDateTime.of(date, time).atZone(zone).toInstant().toEpochMilli()
+}
+
+/** Обратное преобразование срока в дату и минуты дня. */
+fun dueAtToDateTime(
+    dueAtEpochMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault()
+): Pair<LocalDate, Int> {
+    val zoned = Instant.ofEpochMilli(dueAtEpochMillis).atZone(zone)
+    return zoned.toLocalDate() to (zoned.hour * 60 + zoned.minute)
 }

@@ -6,13 +6,22 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [TaskEntity::class, EnhancementEntity::class],
-    version = 1,
+    entities = [
+        ProjectEntity::class,
+        TaskEntity::class,
+        SyncOperationEntity::class,
+        SyncTombstoneEntity::class,
+        SyncConflictEntity::class,
+        SyncAppliedPackageEntity::class,
+        MigrationArchiveEntity::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class MarsDatabase : RoomDatabase() {
+    abstract fun projectDao(): ProjectDao
     abstract fun taskDao(): TaskDao
-    abstract fun enhancementDao(): EnhancementDao
+    abstract fun syncDao(): SyncDao
 
     companion object {
         @Volatile private var instance: MarsDatabase? = null
@@ -23,8 +32,18 @@ abstract class MarsDatabase : RoomDatabase() {
                     context.applicationContext,
                     MarsDatabase::class.java,
                     "mars_planner.db"
-                ).fallbackToDestructiveMigration().build().also { instance = it }
+                )
+                    .addMigrations(MarsMigrations.MIGRATION_1_2, MarsMigrations.MIGRATION_2_3)
+                    .build()
+                    .also { instance = it }
             }
         }
+
+        /** Только для тестов. */
+        fun buildInMemory(context: Context): MarsDatabase =
+            Room.inMemoryDatabaseBuilder(context, MarsDatabase::class.java)
+                .allowMainThreadQueries()
+                .addMigrations(MarsMigrations.MIGRATION_1_2, MarsMigrations.MIGRATION_2_3)
+                .build()
     }
 }

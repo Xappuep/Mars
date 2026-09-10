@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cleartext нужен только для ручной синхронизации с ПК в локальной сети -->
+<!--
+  Синхронизация с ПК идёт только по HTTPS с пиннингом сертификата из QR
+  (см. sync/TlsFingerprint.kt). Незашифрованный трафик запрещён полностью.
+-->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

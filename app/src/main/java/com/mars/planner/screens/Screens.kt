@@ -1,11 +1,11 @@
 package com.mars.planner.screens
 
-import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,14 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,112 +35,153 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
-import com.mars.planner.domain.model.EnhancementIdea
-import com.mars.planner.domain.model.EnhancementStatus
+import com.mars.planner.domain.logic.TaskRules
+import com.mars.planner.domain.model.AppTheme
+import com.mars.planner.domain.model.EffectIntensity
 import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.MotivatorMode
-import com.mars.planner.domain.model.TaskItem
-import com.mars.planner.domain.model.TaskPriority
+import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskStatus
-import com.mars.planner.export.BackupCodec
-import com.mars.planner.motivator.MarsMotivator
-import com.mars.planner.reminder.nextReminderMillis
-import com.mars.planner.sync.SyncResult
+import com.mars.planner.ui.components.FilterChipRow
 import com.mars.planner.ui.components.MarsBackgroundPresence
+import com.mars.planner.ui.components.MarsChoiceChip
 import com.mars.planner.ui.components.MarsEmptyState
 import com.mars.planner.ui.components.MarsPrimaryButton
-import com.mars.planner.ui.components.MarsReactionBanner
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.StatusDot
 import com.mars.planner.ui.components.SummaryChip
 import com.mars.planner.ui.components.TaskCard
-import com.mars.planner.ui.components.marsPreviewOptions
 import com.mars.planner.ui.components.labelRu
-import com.mars.planner.ui.components.previewLabelRu
-import com.mars.planner.ui.components.redactSyncSecrets
 import com.mars.planner.ui.components.marsListItemMotion
-import com.mars.planner.ui.theme.MarsGraphite
-import com.mars.planner.ui.theme.MarsCardDark
-import com.mars.planner.ui.theme.MarsMuted
-import com.mars.planner.ui.theme.MarsOrange
-import com.mars.planner.ui.theme.MarsPeach
-import com.mars.planner.ui.theme.MarsWhite
+import com.mars.planner.ui.components.marsPreviewOptions
+import com.mars.planner.ui.components.previewLabelRu
+import com.mars.planner.ui.theme.LocalMarsPalette
+import com.mars.planner.ui.theme.MarsOutline
 import com.mars.planner.ui.theme.StatusDone
-import com.mars.planner.ui.theme.StatusNotDone
-import com.mars.planner.ui.theme.StatusProgress
-import com.mars.planner.voice.VoiceInputHelper
-import com.mars.planner.voice.VoiceResult
+import com.mars.planner.ui.theme.StatusOpen
+import com.mars.planner.ui.theme.StatusOverdue
+import com.mars.planner.ui.theme.appTheme
+import com.mars.planner.ui.theme.effects
+import com.mars.planner.ui.theme.paletteFor
+import com.mars.planner.ui.theme.withEffects
+import com.mars.planner.ui.theme.withTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
-private val fieldColors @Composable get() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = MarsOrange,
-    unfocusedBorderColor = MarsMuted.copy(alpha = 0.4f),
-    focusedTextColor = MarsWhite,
-    unfocusedTextColor = MarsWhite,
-    cursorColor = MarsOrange,
-    focusedLabelColor = MarsOrange,
-    unfocusedLabelColor = MarsMuted
-)
+internal val marsFieldColors: TextFieldColors
+    @Composable get() {
+        val palette = LocalMarsPalette.current
+        return OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = palette.accent,
+            unfocusedBorderColor = palette.textMuted.copy(alpha = 0.4f),
+            focusedTextColor = palette.text,
+            unfocusedTextColor = palette.text,
+            cursorColor = palette.accent,
+            focusedLabelColor = palette.accent,
+            unfocusedLabelColor = palette.textMuted
+        )
+    }
+
+@Composable
+internal fun ScreenTitleRow(
+    title: String,
+    nav: NavHostController?,
+    trailing: @Composable (() -> Unit)? = null
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (nav != null) {
+            IconButton(onClick = { nav.popBackStack() }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = LocalMarsPalette.current.text)
+            }
+        }
+        Text(
+            text = title,
+            color = LocalMarsPalette.current.text,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        trailing?.invoke()
+    }
+}
 
 @Composable
 internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
-    val tasks by vm.allRootTasks.collectAsState()
     val allTasks by vm.allTasks.collectAsState()
+    val projects by vm.projects.collectAsState()
     var query by remember { mutableStateOf("") }
-    val filtered = tasks.filter {
+    var filter by remember { mutableStateOf(TaskFilter.ALL) }
+    val today = remember { LocalDate.now() }
+
+    val searched = allTasks.filter { task ->
+        val projectName = projects.find { it.syncUuid == task.projectSyncUuid }?.name.orEmpty()
         query.isBlank() ||
-            it.title.contains(query, true) ||
-            it.description.contains(query, true) ||
-            it.category.contains(query, true)
+            task.title.contains(query, true) ||
+            task.description.contains(query, true) ||
+            projectName.contains(query, true)
     }
+    val filtered = remember(searched, filter) { vm.filterTasks(searched, filter) }
+    val doneCount = searched.count { it.status == TaskStatus.DONE }
+    val openCount = searched.count { it.status == TaskStatus.OPEN }
+    val overdueCount = searched.count { TaskRules.isOverdue(it, today) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp)
             .padding(top = 20.dp)
     ) {
-        Text("Задачи", color = MarsWhite, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        val palette = LocalMarsPalette.current
+        Text("Задачи", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Поиск") },
-            colors = fieldColors,
+            label = { Text("Поиск по задачам и проектам") },
+            colors = marsFieldColors,
             singleLine = true
         )
         Spacer(modifier = Modifier.height(12.dp))
-        MarsSecondaryButton("Идеи и улучшения", onClick = { nav.navigate(Routes.Ideas) })
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SummaryChip("Всего", searched.size, palette.text)
+            SummaryChip("Готово", doneCount, StatusDone)
+            SummaryChip("Открыто", openCount, StatusOpen)
+            SummaryChip("Просрочено", overdueCount, StatusOverdue)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            FilterChipRow(filter) { filter = it }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        MarsSecondaryButton("Проекты", onClick = { nav.navigate(Routes.Projects) })
         Spacer(modifier = Modifier.height(12.dp))
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -158,22 +192,21 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
                     item {
                         MarsEmptyState(
                             mood = MarsMood.DEFAULT,
-                            message = if (query.isBlank()) "Пока нет задач" else "Ничего не найдено"
+                            message = when {
+                                query.isNotBlank() -> "Ничего не найдено"
+                                filter != TaskFilter.ALL -> "Нет задач в этом фильтре"
+                                else -> "Пока нет задач"
+                            }
                         )
                     }
                 }
                 itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
-                    val subs = allTasks.filter { it.parentTaskId == task.id }
-                    val progress = if (subs.isEmpty()) {
-                        null
-                    } else {
-                        val done = subs.count { it.status == TaskStatus.DONE }
-                        "Подзадачи: $done из ${subs.size} выполнено"
-                    }
                     TaskCard(
-                        task,
+                        task = task,
+                        isOverdue = TaskRules.isOverdue(task, today),
+                        dueDateLabel = dueLabel(task.dueAtEpochMillis),
+                        projectName = vm.projectName(task.projectSyncUuid),
                         onClick = { nav.navigate(Routes.detail(task.id)) },
-                        subtaskProgress = progress,
                         modifier = Modifier.marsListItemMotion(index)
                     )
                 }
@@ -188,38 +221,39 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
 
 @Composable
 internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
-    val all by vm.allRootTasks.collectAsState()
+    val palette = LocalMarsPalette.current
+    val all by vm.allTasks.collectAsState()
     var month by remember { mutableStateOf(YearMonth.now()) }
     var selectedDay by remember { mutableStateOf(LocalDate.now()) }
-    val counts = remember(all, month) {
-        all.filter { it.dueDateEpochDay != null }
-            .groupBy { it.dueDateEpochDay!! }
-            .mapValues { it.value.size }
+    val today = remember { LocalDate.now() }
+
+    val byDay = remember(all) {
+        all.filter { it.dueAtEpochMillis != null }.groupBy { dueDate(it.dueAtEpochMillis!!) }
     }
-    val dayTasks = all.filter { it.dueDateEpochDay == selectedDay.toEpochDay() }
+    val dayTasks = byDay[selectedDay].orEmpty()
     val firstDow = month.atDay(1).dayOfWeek.value % 7
     val daysInMonth = month.lengthOfMonth()
 
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                month.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale("ru"))),
-                color = MarsWhite,
+                month.format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy", java.util.Locale("ru"))),
+                color = palette.text,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = { month = month.minusMonths(1) }) { Text("<", color = MarsOrange) }
+            TextButton(onClick = { month = month.minusMonths(1) }) { Text("<", color = palette.accent) }
             TextButton(onClick = {
                 month = YearMonth.now()
                 selectedDay = LocalDate.now()
-            }) { Text("Сегодня", color = MarsOrange) }
-            TextButton(onClick = { month = month.plusMonths(1) }) { Text(">", color = MarsOrange) }
+            }) { Text("Сегодня", color = palette.accent) }
+            TextButton(onClick = { month = month.plusMonths(1) }) { Text(">", color = palette.accent) }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEach {
-                Text(it, color = MarsMuted, modifier = Modifier.width(40.dp), fontSize = 12.sp)
+                Text(it, color = palette.textMuted, modifier = Modifier.width(40.dp), fontSize = 12.sp)
             }
         }
         val cells = buildList {
@@ -229,6 +263,9 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
         cells.chunked(7).forEach { week ->
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 week.forEach { day ->
+                    val dayList = if (day == null) emptyList() else byDay[day].orEmpty()
+                    val hasOverdue = dayList.any { TaskRules.isOverdue(it, today) }
+                    val allDone = dayList.isNotEmpty() && dayList.all { it.status == TaskStatus.DONE }
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -236,8 +273,8 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
                             .background(
                                 when {
                                     day == null -> Color.Transparent
-                                    day == selectedDay -> MarsOrange.copy(alpha = 0.25f)
-                                    day == LocalDate.now() -> MarsCardDark
+                                    day == selectedDay -> palette.accent.copy(alpha = 0.25f)
+                                    day == today -> palette.card
                                     else -> Color.Transparent
                                 }
                             )
@@ -246,10 +283,17 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
                     ) {
                         if (day != null) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(day.dayOfMonth.toString(), color = MarsWhite, fontSize = 13.sp)
-                                val c = counts[day.toEpochDay()] ?: 0
-                                if (c > 0) {
-                                    Text(c.toString(), color = MarsOrange, fontSize = 9.sp)
+                                Text(day.dayOfMonth.toString(), color = palette.text, fontSize = 13.sp)
+                                if (dayList.isNotEmpty()) {
+                                    Text(
+                                        text = dayList.size.toString(),
+                                        color = when {
+                                            hasOverdue -> StatusOverdue
+                                            allDone -> StatusDone
+                                            else -> palette.accent
+                                        },
+                                        fontSize = 9.sp
+                                    )
                                 }
                             }
                         }
@@ -261,17 +305,20 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Задачи дня", color = MarsWhite, fontWeight = FontWeight.SemiBold)
+        Text("Задачи дня", color = palette.text, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(8.dp))
         if (dayTasks.isEmpty()) {
-            MarsEmptyState(
-                mood = MarsMood.DEFAULT,
-                message = "В этот день задач нет"
-            )
+            MarsEmptyState(mood = MarsMood.DEFAULT, message = "В этот день задач нет")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(dayTasks, key = { it.id }) { task ->
-                    TaskCard(task, onClick = { nav.navigate(Routes.detail(task.id)) })
+                    TaskCard(
+                        task = task,
+                        isOverdue = TaskRules.isOverdue(task, today),
+                        dueDateLabel = dueLabel(task.dueAtEpochMillis),
+                        projectName = vm.projectName(task.projectSyncUuid),
+                        onClick = { nav.navigate(Routes.detail(task.id)) }
+                    )
                 }
             }
         }
@@ -279,8 +326,9 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
 }
 
 @Composable
-internal fun StatsScreen(vm: AppViewModel) {
-    val all by vm.allRootTasks.collectAsState()
+internal fun StatsScreen(vm: AppViewModel, nav: NavHostController) {
+    val palette = LocalMarsPalette.current
+    val all by vm.allTasks.collectAsState()
     val stats = remember(all) { vm.stats() }
     Column(
         modifier = Modifier
@@ -289,46 +337,49 @@ internal fun StatsScreen(vm: AppViewModel) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Статистика", color = MarsWhite, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        StatCard("Выполнено за неделю", stats.completedWeek.toString())
-        StatCard("Выполнено за месяц", stats.completedMonth.toString())
-        StatCard("Переносов", stats.postponeCount.toString())
-        StatCard("Просрочено сейчас", stats.overdueCount.toString(), StatusNotDone)
-        StatCard("Процент выполнения (месяц)", "${stats.completionPercent}%", StatusDone)
-        StatCard("Серия продуктивных дней", stats.productiveStreak.toString(), MarsOrange)
+        ScreenTitleRow("Статистика", nav)
+        StatCard("Выполнено за неделю", stats.completedWeek.toString(), StatusDone)
+        StatCard("Выполнено за месяц", stats.completedMonth.toString(), StatusDone)
+        StatCard("Открытых задач", stats.openCount.toString(), StatusOpen)
+        StatCard("Просрочено сейчас", stats.overdueCount.toString(), StatusOverdue)
+        StatCard("Процент выполнения (месяц)", "${stats.completionPercent}%", palette.highlight)
+        StatCard("Серия продуктивных дней", stats.productiveStreak.toString(), palette.accent)
         Text(
-            "День продуктивный, если выполнена хотя бы одна запланированная задача.",
-            color = MarsMuted,
+            "День продуктивный, если выполнена хотя бы одна задача.",
+            color = palette.textMuted,
             fontSize = 13.sp
         )
     }
 }
 
 @Composable
-private fun StatCard(label: String, value: String, accent: Color = MarsPeach) {
+private fun StatCard(label: String, value: String, accent: Color) {
+    val palette = LocalMarsPalette.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(MarsCardDark)
+            .background(palette.card)
             .padding(18.dp)
     ) {
-        Text(label, color = MarsMuted, fontSize = 13.sp)
+        Text(label, color = palette.textMuted, fontSize = 13.sp)
         Text(value, color = accent, fontSize = 28.sp, fontWeight = FontWeight.Bold)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
+    val palette = LocalMarsPalette.current
     val settings by vm.settings.collectAsState()
+    val pendingSync by vm.pendingSyncCount.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var message by remember { mutableStateOf<String?>(null) }
     var confirmReplace by remember { mutableStateOf(false) }
     var pendingImportJson by remember { mutableStateOf<String?>(null) }
-    var importCount by remember { mutableStateOf(0) }
+    var importCount by remember { mutableIntStateOf(0) }
     var confirmClearDemo by remember { mutableStateOf(false) }
+    var pendingArchiveJson by remember { mutableStateOf<String?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -342,8 +393,24 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                 message = "Файл пуст"
                 return@launch
             }
-            importCount = BackupCodec.parseTaskCount(json)
+            importCount = runCatching { com.mars.planner.export.BackupCodec.parseTaskCount(json) }.getOrDefault(0)
             pendingImportJson = json
+        }
+    }
+
+    val archiveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val json = pendingArchiveJson
+        pendingArchiveJson = null
+        if (uri == null || json == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                }
+            }
+            message = "Архив миграции сохранён"
         }
     }
 
@@ -354,44 +421,91 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Настройки", color = MarsWhite, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("Настройки", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = settings.userName,
             onValueChange = { v -> scope.launch { vm.updateSettings { it.copy(userName = v) } } },
             label = { Text("Как к вам обращаться") },
             modifier = Modifier.fillMaxWidth(),
-            colors = fieldColors
+            colors = marsFieldColors
         )
-        Text("Мотиватор Марса", color = MarsWhite, fontWeight = FontWeight.SemiBold)
-        MotivatorMode.entries.forEach { mode ->
+
+        Text("Оформление", color = palette.text, fontWeight = FontWeight.SemiBold)
+        AppTheme.entries.chunked(2).forEach { row ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (settings.motivatorMode == mode) MarsOrange.copy(0.2f) else MarsCardDark)
-                    .clickable { scope.launch { vm.updateSettings { it.copy(motivatorMode = mode) } } }
-                    .padding(14.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(mode.labelRu, color = MarsWhite)
+                row.forEach { theme ->
+                    val active = settings.appTheme == theme
+                    val themePalette = paletteFor(theme)
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (active) themePalette.accent.copy(alpha = 0.22f) else palette.card)
+                            .border(
+                                1.dp,
+                                if (active) themePalette.accent else MarsOutline,
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable { scope.launch { vm.updateSettings { it.withTheme(theme) } } }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(themePalette.accent)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = theme.labelRu,
+                            color = if (active) palette.text else palette.textMuted,
+                            fontSize = 13.sp,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                }
+                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
             }
         }
-        MarsSecondaryButton(
-            "Образы Марса",
-            onClick = { nav.navigate(Routes.MarsImages) },
-            modifier = Modifier.fillMaxWidth()
+
+        Text("Насыщенность эффектов", color = palette.text, fontWeight = FontWeight.SemiBold)
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            EffectIntensity.entries.forEach { level ->
+                MarsChoiceChip(
+                    label = level.labelRu,
+                    selected = settings.effects == level,
+                    onClick = { scope.launch { vm.updateSettings { it.withEffects(level) } } }
+                )
+            }
+        }
+        Text(
+            "Влияет на свечения, градиенты и ореол Марса. Не влияет на читаемость текста.",
+            color = palette.textMuted,
+            fontSize = 12.sp
         )
-        MarsSecondaryButton("Синхронизация с ПК", onClick = { nav.navigate(Routes.Sync) }, modifier = Modifier.fillMaxWidth())
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(MarsCardDark)
+                .background(palette.card)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Уменьшить анимации", color = MarsWhite, fontWeight = FontWeight.Medium)
-                Text("Мгновенная смена состояний без декоративного движения", color = MarsMuted, fontSize = 12.sp)
+                Text("Уменьшить анимации", color = palette.text, fontWeight = FontWeight.Medium)
+                Text(
+                    "Мгновенная смена состояний без декоративного движения",
+                    color = palette.textMuted,
+                    fontSize = 12.sp
+                )
             }
             Switch(
                 checked = settings.reduceAnimations,
@@ -399,13 +513,54 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                     scope.launch { vm.updateSettings { it.copy(reduceAnimations = v) } }
                 },
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = MarsWhite,
-                    checkedTrackColor = MarsOrange,
-                    uncheckedThumbColor = MarsMuted,
-                    uncheckedTrackColor = MarsCardDark
+                    checkedThumbColor = palette.text,
+                    checkedTrackColor = palette.accent,
+                    uncheckedThumbColor = palette.textMuted,
+                    uncheckedTrackColor = palette.card
                 )
             )
         }
+
+        Text("Мотиватор Марса", color = palette.text, fontWeight = FontWeight.SemiBold)
+        MotivatorMode.entries.forEach { mode ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (settings.motivatorMode == mode) palette.accent.copy(0.2f) else palette.card)
+                    .clickable { scope.launch { vm.updateSettings { it.copy(motivatorMode = mode) } } }
+                    .padding(14.dp)
+            ) {
+                Text(mode.labelRu, color = palette.text)
+            }
+        }
+
+        MarsSecondaryButton(
+            "Образы Марса",
+            onClick = { nav.navigate(Routes.MarsImages) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        MarsSecondaryButton(
+            text = if (settings.syncPaired) {
+                "Синхронизация с ПК · ${if (pendingSync > 0) "к отправке $pendingSync" else "всё отправлено"}"
+            } else {
+                "Синхронизация с ПК · не сопряжено"
+            },
+            onClick = { nav.navigate(Routes.Sync) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        MarsSecondaryButton(
+            "Как связать телефон и ПК",
+            onClick = { nav.navigate(Routes.SyncGuide) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        MarsSecondaryButton(
+            "Статистика",
+            onClick = { nav.navigate(Routes.Stats) },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Text("Данные", color = palette.text, fontWeight = FontWeight.SemiBold)
         MarsPrimaryButton("Экспорт JSON", onClick = {
             scope.launch {
                 val json = vm.exportJson()
@@ -425,6 +580,17 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         MarsSecondaryButton("Импорт JSON", onClick = {
             importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
         })
+        MarsSecondaryButton("Выгрузить архив миграции", onClick = {
+            scope.launch {
+                val json = vm.migrationArchiveJson()
+                if (json.isNullOrBlank()) {
+                    message = "Архив миграции отсутствует — перенос данных не выполнялся"
+                } else {
+                    pendingArchiveJson = json
+                    archiveLauncher.launch("mars_migration_archive_${System.currentTimeMillis()}.json")
+                }
+            }
+        })
         MarsSecondaryButton("Загрузить демо-данные", onClick = {
             scope.launch {
                 vm.loadDemo()
@@ -433,32 +599,38 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         })
         MarsSecondaryButton("Очистить демо-данные", onClick = { confirmClearDemo = true })
         Text(
-            "Уведомления: если разрешение не выдано, включите его в настройках Android → Приложения → Ежедневник Марса → Уведомления.",
-            color = MarsMuted,
+            "Уведомления: если разрешение не выдано, включите его в настройках Android → " +
+                "Приложения → Ежедневник Марса → Уведомления.",
+            color = palette.textMuted,
             fontSize = 12.sp
         )
-        if (message != null) Text(message!!, color = MarsPeach, fontSize = 13.sp)
+        if (message != null) Text(message!!, color = palette.highlight, fontSize = 13.sp)
+        Spacer(modifier = Modifier.height(24.dp))
     }
 
     if (pendingImportJson != null && !confirmReplace) {
         AlertDialog(
             onDismissRequest = { pendingImportJson = null },
             title = { Text("Импорт: $importCount задач") },
-            text = { Text("Объединить с текущими данными или заменить? Замена потребует подтверждения и создаст локальную резервную копию.") },
+            text = {
+                Text(
+                    "Объединить с текущими данными или заменить? Замена потребует подтверждения " +
+                        "и создаст локальную резервную копию. Копии Ежедневника v1 будут " +
+                        "преобразованы: категории станут проектами, подзадачи и дополнения — задачами."
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     val json = pendingImportJson!!
                     pendingImportJson = null
                     scope.launch {
-                        vm.importJson(json, replace = false)
-                        message = "Данные объединены"
+                        val count = vm.importJson(json, replace = false)
+                        message = "Объединено задач: $count"
                     }
                 }) { Text("Объединить") }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    confirmReplace = true
-                }) { Text("Заменить…") }
+                TextButton(onClick = { confirmReplace = true }) { Text("Заменить…") }
             }
         )
     }
@@ -476,8 +648,8 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                         val backup = vm.exportJson()
                         val file = File(context.filesDir, "pre_replace_backup_${System.currentTimeMillis()}.json")
                         withContext(Dispatchers.IO) { file.writeText(backup) }
-                        vm.importJson(json, replace = true)
-                        message = "Данные заменены. Резервная копия: ${file.name}"
+                        val count = vm.importJson(json, replace = true)
+                        message = "Данные заменены ($count задач). Резервная копия: ${file.name}"
                     }
                 }) { Text("Заменить") }
             },
@@ -490,7 +662,7 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         AlertDialog(
             onDismissRequest = { confirmClearDemo = false },
             title = { Text("Очистить демо?") },
-            text = { Text("Будут удалены только задачи, помеченные как демо.") },
+            text = { Text("Будут удалены только задачи и проекты, помеченные как демо.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmClearDemo = false
@@ -508,217 +680,8 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
 }
 
 @Composable
-internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
-    val settings by vm.settings.collectAsState()
-    val scope = rememberCoroutineScope()
-    var host by remember(settings.syncHost) { mutableStateOf(settings.syncHost) }
-    var port by remember(settings.syncPort) { mutableStateOf(settings.syncPort.toString()) }
-    var key by remember(settings.syncKey) { mutableStateOf(settings.syncKey) }
-    var status by remember { mutableStateOf("Укажите IP компьютера в одной Wi‑Fi-сети") }
-    var conflictChoice by remember { mutableStateOf(false) }
-    var downloadedJson by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.popBackStack() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MarsWhite)
-            }
-            Text("Синхронизация с ПК", color = MarsWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        }
-        Text(
-            "Локальная сеть только. Без облака. Сначала запустите desktop-sync-server на компьютере.",
-            color = MarsMuted,
-            fontSize = 13.sp
-        )
-        OutlinedTextField(host, { host = it }, label = { Text("IP компьютера") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-        OutlinedTextField(port, { port = it.filter { ch -> ch.isDigit() } }, label = { Text("Порт") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-        var keyVisible by remember { mutableStateOf(false) }
-        OutlinedTextField(
-            value = key,
-            onValueChange = { key = it },
-            label = { Text("Ключ сопряжения") },
-            modifier = Modifier.fillMaxWidth(),
-            colors = fieldColors,
-            singleLine = true,
-            visualTransformation = if (keyVisible) {
-                VisualTransformation.None
-            } else {
-                PasswordVisualTransformation()
-            },
-            trailingIcon = {
-                IconButton(onClick = { keyVisible = !keyVisible }) {
-                    Icon(
-                        imageVector = if (keyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (keyVisible) "Скрыть ключ" else "Показать ключ",
-                        tint = MarsMuted
-                    )
-                }
-            }
-        )
-        MarsPrimaryButton("Сохранить настройки", onClick = {
-            scope.launch {
-                vm.updateSettings {
-                    it.copy(
-                        syncHost = host.trim(),
-                        syncPort = port.toIntOrNull() ?: 8765,
-                        syncKey = key.trim()
-                    )
-                }
-                status = "Настройки сохранены"
-            }
-        })
-        MarsSecondaryButton("Проверить подключение", onClick = {
-            scope.launch {
-                vm.updateSettings {
-                    it.copy(syncHost = host.trim(), syncPort = port.toIntOrNull() ?: 8765, syncKey = key.trim())
-                }
-                val info = withContext(Dispatchers.IO) { vm.syncCheck() }
-                val raw = if (info.ok) {
-                    val last = info.lastBackupAt?.let {
-                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())
-                            .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
-                    } ?: "нет"
-                    "${info.message}. Последняя копия на ПК: $last"
-                } else info.message
-                status = redactSyncSecrets(raw, key.trim())
-            }
-        })
-        val lastSync = if (settings.lastSyncAt > 0) {
-            Instant.ofEpochMilli(settings.lastSyncAt).atZone(ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
-        } else "ещё не было"
-        Text("Последняя синхронизация с телефона: $lastSync", color = MarsMuted, fontSize = 12.sp)
-        MarsPrimaryButton("Отправить копию на ПК", onClick = {
-            scope.launch {
-                val result = withContext(Dispatchers.IO) { vm.syncUpload() }
-                val raw = when (result) {
-                    is SyncResult.Success -> result.message
-                    is SyncResult.Error -> result.message
-                    is SyncResult.Conflict -> "Конфликт данных"
-                }
-                status = redactSyncSecrets(raw, key.trim())
-            }
-        })
-        MarsSecondaryButton("Восстановить с ПК", onClick = {
-            scope.launch {
-                val s = settings.copy(syncHost = host.trim(), syncPort = port.toIntOrNull() ?: 8765, syncKey = key.trim())
-                vm.updateSettings { s }
-                val (result, json) = withContext(Dispatchers.IO) {
-                    vm.let { /* download without applying */ 
-                        val client = com.mars.planner.sync.SyncClient()
-                        client.downloadBackup(s.syncHost, s.syncPort, s.syncKey)
-                    }
-                }
-                when (result) {
-                    is SyncResult.Success -> {
-                        downloadedJson = json
-                        conflictChoice = true
-                    }
-                    is SyncResult.Error -> status = redactSyncSecrets(result.message, key.trim())
-                    else -> status = "Не удалось получить копию"
-                }
-            }
-        })
-        Text(status, color = MarsPeach, fontSize = 13.sp)
-        Text(
-            "При любой ошибке локальные данные телефона остаются нетронутыми.",
-            color = MarsMuted,
-            fontSize = 12.sp
-        )
-    }
-
-    if (conflictChoice && downloadedJson != null) {
-        AlertDialog(
-            onDismissRequest = { conflictChoice = false },
-            title = { Text("Как восстановить?") },
-            text = {
-                Text("Оставить данные телефона, заменить данными с ПК или сохранить обе версии (объединить). Перед заменой создаётся локальная резервная копия.")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    conflictChoice = false
-                    scope.launch {
-                        val backup = vm.exportJson()
-                        File(context.filesDir, "pre_restore_${System.currentTimeMillis()}.json").writeText(backup)
-                        vm.importJson(downloadedJson!!, replace = true)
-                        vm.updateSettings { it.copy(lastSyncAt = System.currentTimeMillis()) }
-                        status = "Данные телефона заменены копией с ПК"
-                        downloadedJson = null
-                    }
-                }) { Text("Оставить ПК") }
-            },
-            dismissButton = {
-                Column {
-                    TextButton(onClick = {
-                        conflictChoice = false
-                        downloadedJson = null
-                        status = "Данные телефона сохранены без изменений"
-                    }) { Text("Оставить телефон") }
-                    TextButton(onClick = {
-                        conflictChoice = false
-                        scope.launch {
-                            vm.importJson(downloadedJson!!, replace = false)
-                            vm.updateSettings { it.copy(lastSyncAt = System.currentTimeMillis()) }
-                            status = "Версии объединены"
-                            downloadedJson = null
-                        }
-                    }) { Text("Сохранить обе") }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-internal fun IdeasScreen(vm: AppViewModel, nav: NavHostController) {
-    val ideas by vm.ideas.collectAsState()
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.popBackStack() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = MarsWhite)
-            }
-            Text("Идеи и улучшения", color = MarsWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        if (ideas.isEmpty()) {
-            MarsEmptyState(
-                mood = MarsMood.SUPPORTIVE,
-                message = "Идей пока нет"
-            )
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(ideas, key = { it.id }) { idea ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MarsCardDark)
-                            .padding(14.dp)
-                    ) {
-                        Text(idea.title, color = MarsWhite, fontWeight = FontWeight.SemiBold)
-                        Text(idea.status.labelRu, color = MarsPeach, fontSize = 12.sp)
-                        if (idea.description.isNotBlank()) {
-                            Text(idea.description, color = MarsMuted, fontSize = 13.sp)
-                        }
-                        TextButton(onClick = { nav.navigate(Routes.detail(idea.sourceTaskId)) }) {
-                            Text("К исходной задаче", color = MarsOrange)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 internal fun MarsImagesPreviewScreen(nav: NavHostController) {
+    val palette = LocalMarsPalette.current
     val context = LocalContext.current
     val activity = context as? android.app.Activity
     val moodFromIntent = activity?.intent?.getStringExtra("mars_preview_mood")?.let { raw ->
@@ -732,9 +695,7 @@ internal fun MarsImagesPreviewScreen(nav: NavHostController) {
     LaunchedEffect(moodFromIntent) {
         if (moodFromIntent != null) selectedMood = moodFromIntent
     }
-    val dateLabel = remember {
-        LocalDate.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")))
-    }
+    val dateLabel = remember { LocalDate.now().format(ruDateFull) }
     val pagePad = Modifier.padding(horizontal = 20.dp)
     val contentWidth = Modifier.fillMaxWidth(0.64f)
     val scrollState = rememberScrollState()
@@ -761,64 +722,59 @@ internal fun MarsImagesPreviewScreen(nav: NavHostController) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { nav.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = MarsWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = palette.text)
                     }
-                    Text(
-                        text = "Образы Марса",
-                        color = MarsWhite,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Образы Марса", color = palette.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 }
                 Text(
                     text = "Предпросмотр. Задачи и статистика не меняются.",
-                    color = MarsMuted,
+                    color = palette.textMuted,
                     fontSize = 12.sp,
                     modifier = pagePad
                 )
                 Column(modifier = pagePad.padding(top = 4.dp)) {
-                    Text("Ежедневник Марса", color = MarsOrange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Ежедневник Марса", color = palette.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Сегодня", color = MarsWhite, fontWeight = FontWeight.Bold, fontSize = 32.sp)
+                    Text("Сегодня", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 32.sp)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(dateLabel, color = MarsMuted, fontSize = 14.sp)
+                    Text(dateLabel, color = palette.textMuted, fontSize = 14.sp)
                 }
                 Row(modifier = pagePad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SummaryChip("Всего", 2, MarsWhite)
-                    SummaryChip("Готово", 0, StatusDone)
-                    SummaryChip("В работе", 1, StatusProgress)
-                    SummaryChip("Просрочено", 0, StatusNotDone)
+                    SummaryChip("Всего", 2, palette.text)
+                    SummaryChip("Готово", 1, StatusDone)
+                    SummaryChip("Открыто", 1, StatusOpen)
+                    SummaryChip("Просрочено", 0, StatusOverdue)
                 }
                 Column(
                     modifier = pagePad
                         .then(contentWidth)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(MarsCardDark)
+                        .background(palette.card)
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        StatusDot(TaskStatus.IN_PROGRESS)
+                        StatusDot(TaskStatus.OPEN)
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("Пример задачи", color = MarsWhite, fontWeight = FontWeight.SemiBold)
+                        Text("Пример задачи", color = palette.text, fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("В работе · Обычный", color = MarsMuted, fontSize = 12.sp)
+                    Text("Открыта · Обычный", color = palette.textMuted, fontSize = 12.sp)
                 }
                 Column(modifier = pagePad.then(contentWidth)) {
-                    Text("Состояние", color = MarsMuted, fontSize = 13.sp)
+                    Text("Состояние", color = palette.textMuted, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = selectedMood.previewLabelRu(),
-                        color = MarsWhite,
+                        color = palette.text,
                         fontWeight = FontWeight.Bold,
                         fontSize = 26.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(selectedMood.labelRu(), color = MarsMuted, fontSize = 14.sp)
+                    Text(selectedMood.labelRu(), color = palette.textMuted, fontSize = 14.sp)
                 }
                 Text(
                     text = "Выберите образ",
-                    color = MarsWhite,
+                    color = palette.text,
                     fontWeight = FontWeight.SemiBold,
                     modifier = pagePad.padding(top = 4.dp)
                 )
@@ -833,10 +789,10 @@ internal fun MarsImagesPreviewScreen(nav: NavHostController) {
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(if (active) MarsOrange.copy(alpha = 0.28f) else MarsCardDark)
+                                    .background(if (active) palette.accent.copy(alpha = 0.28f) else palette.card)
                                     .border(
                                         width = 1.dp,
-                                        color = if (active) MarsOrange else Color(0xFF30303A),
+                                        color = if (active) palette.accent else MarsOutline,
                                         shape = RoundedCornerShape(16.dp)
                                     )
                                     .clickable { selectedMood = option.mood }
@@ -845,7 +801,7 @@ internal fun MarsImagesPreviewScreen(nav: NavHostController) {
                             ) {
                                 Text(
                                     text = option.label,
-                                    color = if (active) MarsWhite else MarsMuted,
+                                    color = if (active) palette.text else palette.textMuted,
                                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                                     fontSize = 14.sp
                                 )

@@ -1,0 +1,331 @@
+package com.mars.planner.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
+import com.mars.planner.domain.model.MarsMood
+import com.mars.planner.domain.model.ProjectItem
+import com.mars.planner.domain.model.ProjectWithStats
+import com.mars.planner.ui.components.MarsChoiceChip
+import com.mars.planner.ui.components.MarsDangerOutlineButton
+import com.mars.planner.ui.components.MarsEmptyState
+import com.mars.planner.ui.components.MarsPrimaryButton
+import com.mars.planner.ui.components.MarsProgressBar
+import com.mars.planner.ui.components.MarsSecondaryButton
+import com.mars.planner.ui.components.marsListItemMotion
+import com.mars.planner.ui.theme.LocalMarsPalette
+import com.mars.planner.ui.theme.StatusDone
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+@Composable
+internal fun ProjectsScreen(vm: AppViewModel, nav: NavHostController) {
+    val palette = LocalMarsPalette.current
+    val projects by vm.projectsWithStats.collectAsState()
+    val scope = rememberCoroutineScope()
+    var showArchive by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<ProjectItem?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf<ProjectItem?>(null) }
+
+    val visible = projects.filter { it.project.archived == showArchive }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp)
+            .padding(top = 20.dp)
+    ) {
+        Text("Проекты", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Задачи можно группировать по проектам. Проект без задач не мешает — его можно убрать в архив.",
+            color = palette.textMuted,
+            fontSize = 13.sp
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MarsChoiceChip(
+                label = "Активные (${projects.count { !it.project.archived }})",
+                selected = !showArchive,
+                onClick = { showArchive = false }
+            )
+            MarsChoiceChip(
+                label = "Архив (${projects.count { it.project.archived }})",
+                selected = showArchive,
+                onClick = { showArchive = true }
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        MarsPrimaryButton(
+            text = "＋ Новый проект",
+            onClick = {
+                editing = null
+                showEditor = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                if (visible.isEmpty()) {
+                    item {
+                        MarsEmptyState(
+                            mood = MarsMood.DEFAULT,
+                            message = if (showArchive) "Архив пуст" else "Пока нет проектов"
+                        )
+                    }
+                }
+                itemsIndexed(visible, key = { _, it -> it.project.id }) { index, stats ->
+                    ProjectCard(
+                        stats = stats,
+                        modifier = Modifier.marsListItemMotion(index),
+                        onOpenTasks = { nav.navigate(Routes.Tasks) },
+                        onEdit = {
+                            editing = stats.project
+                            showEditor = true
+                        },
+                        onArchive = {
+                            scope.launch {
+                                vm.archiveProject(stats.project.id, !stats.project.archived)
+                            }
+                        },
+                        onDelete = { confirmDelete = stats.project }
+                    )
+                }
+            }
+        }
+    }
+
+    if (showEditor) {
+        ProjectEditorDialog(
+            initial = editing,
+            onDismiss = { showEditor = false },
+            onSave = { name, description ->
+                showEditor = false
+                val base = editing
+                scope.launch {
+                    vm.saveProject(
+                        base?.copy(name = name, description = description)
+                            ?: ProjectItem(
+                                syncUuid = UUID.randomUUID().toString(),
+                                name = name,
+                                description = description
+                            )
+                    )
+                }
+            }
+        )
+    }
+
+    confirmDelete?.let { project ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            containerColor = palette.backgroundElevated,
+            title = { Text("Удалить проект «${project.name}»?") },
+            text = {
+                Text(
+                    "Вместе с проектом удалятся его задачи. Если нужно только убрать проект " +
+                        "из списка — используйте архив."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = null
+                    scope.launch { vm.deleteProject(project.id) }
+                }) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = null }) { Text("Отмена") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ProjectCard(
+    stats: ProjectWithStats,
+    modifier: Modifier = Modifier,
+    onOpenTasks: () -> Unit,
+    onEdit: () -> Unit,
+    onArchive: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val palette = LocalMarsPalette.current
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(palette.card)
+            .clickable(onClick = onOpenTasks)
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stats.project.name,
+                color = palette.text,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 17.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${stats.doneTasks}/${stats.totalTasks}",
+                color = if (stats.totalTasks > 0 && stats.doneTasks == stats.totalTasks) StatusDone else palette.textMuted,
+                fontSize = 13.sp
+            )
+        }
+        if (stats.project.description.isNotBlank()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(stats.project.description, color = palette.textMuted, fontSize = 13.sp)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        MarsProgressBar(percent = stats.progressPercent)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("Готово ${stats.progressPercent}%", color = palette.textMuted, fontSize = 12.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MarsSecondaryButton("Изменить", onClick = onEdit)
+            MarsSecondaryButton(
+                text = if (stats.project.archived) "Вернуть" else "В архив",
+                onClick = onArchive
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        MarsDangerOutlineButton("Удалить", onClick = onDelete)
+    }
+}
+
+@Composable
+private fun ProjectEditorDialog(
+    initial: ProjectItem?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    val palette = LocalMarsPalette.current
+    var name by remember { mutableStateOf(initial?.name.orEmpty()) }
+    var description by remember { mutableStateOf(initial?.description.orEmpty()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = palette.backgroundElevated,
+        title = { Text(if (initial == null) "Новый проект" else "Проект") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Название") },
+                    singleLine = true,
+                    colors = marsFieldColors,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Описание") },
+                    colors = marsFieldColors,
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = { onSave(name.trim(), description.trim()) }
+            ) { Text("Сохранить") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        }
+    )
+}
+
+/** Выпадающий выбор проекта для задачи; null — «Без проекта». */
+@Composable
+internal fun ProjectPicker(
+    projects: List<ProjectItem>,
+    selectedUuid: String?,
+    onSelect: (String?) -> Unit
+) {
+    val palette = LocalMarsPalette.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Проект", color = palette.textMuted, fontSize = 13.sp)
+        Spacer(modifier = Modifier.height(6.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(palette.card)
+        ) {
+            ProjectPickerRow("Без проекта", selectedUuid == null) { onSelect(null) }
+            projects.forEach { project ->
+                ProjectPickerRow(project.name, selectedUuid == project.syncUuid) {
+                    onSelect(project.syncUuid)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectPickerRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    val palette = LocalMarsPalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) palette.accent.copy(alpha = 0.2f) else palette.card)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(8.dp)
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (selected) palette.accent else palette.textMuted.copy(alpha = 0.5f))
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = label,
+            color = if (selected) palette.text else palette.textMuted,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}

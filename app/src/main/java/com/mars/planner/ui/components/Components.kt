@@ -1,23 +1,28 @@
 package com.mars.planner.ui.components
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,7 +38,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -58,8 +62,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -69,52 +73,42 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Canvas
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.ImageDecoder
-import android.os.Build
 import com.mars.planner.R
 import com.mars.planner.domain.model.MarsMood
+import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskStatus
 import com.mars.planner.ui.theme.AnimatedCounterText
-import com.mars.planner.ui.theme.MarsAccentProgress
-import com.mars.planner.ui.theme.MarsAccentProgressSoft
-import com.mars.planner.ui.theme.MarsCardDark
-import com.mars.planner.ui.theme.MarsGlass
-import com.mars.planner.ui.theme.MarsGoldGlow
-import com.mars.planner.ui.theme.MarsGraphite
+import com.mars.planner.ui.theme.LocalEffectIntensity
+import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.MarsMotion
-import com.mars.planner.ui.theme.MarsMuted
-import com.mars.planner.ui.theme.MarsOrange
-import com.mars.planner.ui.theme.MarsOrangeSoft
-import com.mars.planner.ui.theme.MarsOverdueGlow
-import com.mars.planner.ui.theme.MarsOverdueSoft
-import com.mars.planner.ui.theme.MarsPeach
-import com.mars.planner.ui.theme.MarsWhite
-import com.mars.planner.ui.theme.StatusCancelled
+import com.mars.planner.ui.theme.MarsOutline
+import com.mars.planner.ui.theme.StatusDanger
 import com.mars.planner.ui.theme.StatusDone
-import com.mars.planner.ui.theme.StatusNew
-import com.mars.planner.ui.theme.StatusNotDone
-import com.mars.planner.ui.theme.StatusPostponed
-import com.mars.planner.ui.theme.StatusProgress
+import com.mars.planner.ui.theme.StatusOpen
+import com.mars.planner.ui.theme.StatusOverdue
 import java.io.IOException
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 val LocalReduceAnimations = compositionLocalOf { false }
 
 fun TaskStatus.color(): Color = when (this) {
+    TaskStatus.OPEN -> StatusOpen
     TaskStatus.DONE -> StatusDone
-    TaskStatus.IN_PROGRESS -> StatusProgress
-    TaskStatus.POSTPONED -> StatusPostponed
-    TaskStatus.NOT_DONE -> StatusNotDone
-    TaskStatus.CANCELLED -> StatusCancelled
-    TaskStatus.NEW -> StatusNew
+}
+
+/** Цвет метки задачи с учётом просрочки. */
+fun statusColor(status: TaskStatus, isOverdue: Boolean): Color =
+    if (isOverdue && status == TaskStatus.OPEN) StatusOverdue else status.color()
+
+fun TaskFilter.color(): Color {
+    // Цвет «Все» берётся из палитры в FilterBar через palette.text.
+    return when (this) {
+        TaskFilter.ALL -> Color.Unspecified
+        TaskFilter.OPEN -> StatusOpen
+        TaskFilter.DONE -> StatusDone
+        TaskFilter.OVERDUE -> StatusOverdue
+    }
 }
 
 fun MarsMood.previewLabelRu(): String = when (this) {
@@ -217,21 +211,23 @@ fun MarsAvatar(
     animateChange: Boolean = true
 ) {
     val context = LocalContext.current
+    val palette = LocalMarsPalette.current
     val reduce = LocalReduceAnimations.current
-    val bitmap = remember(mood, size) {
-        val targetPx = with(context.resources.displayMetrics) {
-            (size.value * density).toInt().coerceAtLeast(64)
-        }
-        loadMarsBitmap(context, mood, targetPx)
-    }
 
-    val content: @Composable () -> Unit = {
+    @Composable
+    fun AvatarFrame(activeMood: MarsMood) {
+        val bitmap = remember(activeMood, size) {
+            val targetPx = with(context.resources.displayMetrics) {
+                (size.value * density).toInt().coerceAtLeast(64)
+            }
+            loadMarsBitmap(context, activeMood, targetPx)
+        }
         Box(
             modifier = Modifier
                 .size(size)
                 .clip(RoundedCornerShape(28.dp))
-                .background(MarsCardDark)
-                .border(2.dp, MarsOrangeSoft, RoundedCornerShape(28.dp)),
+                .background(palette.card)
+                .border(2.dp, palette.accentSoft, RoundedCornerShape(28.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (bitmap != null) {
@@ -258,7 +254,7 @@ fun MarsAvatar(
     }
 
     if (!animateChange || reduce) {
-        Box(modifier = modifier) { content() }
+        Box(modifier = modifier) { AvatarFrame(mood) }
     } else {
         AnimatedContent(
             targetState = mood,
@@ -268,8 +264,8 @@ fun MarsAvatar(
             },
             label = "marsAvatar",
             modifier = modifier
-        ) { _ ->
-            content()
+        ) { activeMood ->
+            AvatarFrame(activeMood)
         }
     }
 }
@@ -406,6 +402,7 @@ private fun MarsBackgroundPresenceBody(
 ) {
     val context = LocalContext.current
     val reduce = LocalReduceAnimations.current
+    val effects = LocalEffectIntensity.current
     val density = LocalDensity.current
     val animatedAlpha by animateFloatAsState(
         targetValue = presenceAlpha.coerceIn(0f, 1f),
@@ -459,30 +456,34 @@ private fun MarsBackgroundPresenceBody(
             contentAlignment = Alignment.BottomCenter
         ) {
             // Едва заметный нейтральный ореол — отделяет силуэт от фона, без цветного пятна.
-            val neutralHaloAlpha = 0.045f + (animatedAlpha.coerceIn(0.4f, 0.85f) - 0.4f) * 0.08f
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = breathScale * 1.02f
-                        scaleY = breathScale * 1.02f
-                        translationY = driftPx - parallaxPx
-                        translationX = nudgeX.value
-                    }
-            ) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF4A4A54).copy(alpha = neutralHaloAlpha),
-                            Color(0xFF32323A).copy(alpha = neutralHaloAlpha * 0.45f),
-                            Color.Transparent
+            val neutralHaloAlpha = effects.scale(
+                0.045f + (animatedAlpha.coerceIn(0.4f, 0.85f) - 0.4f) * 0.08f
+            )
+            if (neutralHaloAlpha > 0f) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = breathScale * 1.02f
+                            scaleY = breathScale * 1.02f
+                            translationY = driftPx - parallaxPx
+                            translationX = nudgeX.value
+                        }
+                ) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFF4A4A54).copy(alpha = neutralHaloAlpha),
+                                Color(0xFF32323A).copy(alpha = neutralHaloAlpha * 0.45f),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.54f, size.height * 0.64f),
+                            radius = size.minDimension * 0.42f
                         ),
-                        center = Offset(size.width * 0.54f, size.height * 0.64f),
-                        radius = size.minDimension * 0.42f
-                    ),
-                    radius = size.minDimension * 0.42f,
-                    center = Offset(size.width * 0.54f, size.height * 0.64f)
-                )
+                        radius = size.minDimension * 0.42f,
+                        center = Offset(size.width * 0.54f, size.height * 0.64f)
+                    )
+                }
             }
             Box(
                 modifier = Modifier
@@ -525,6 +526,7 @@ fun MarsPresenceReaction(
     modifier: Modifier = Modifier
 ) {
     if (message.isBlank()) return
+    val palette = LocalMarsPalette.current
     val reduce = LocalReduceAnimations.current
     val appear = remember { Animatable(if (reduce) 1f else 0f) }
     LaunchedEffect(message) {
@@ -537,7 +539,7 @@ fun MarsPresenceReaction(
     }
     Text(
         text = message,
-        color = MarsWhite.copy(alpha = 0.92f),
+        color = palette.text.copy(alpha = 0.92f),
         fontSize = 13.sp,
         lineHeight = 17.sp,
         maxLines = 3,
@@ -545,7 +547,7 @@ fun MarsPresenceReaction(
         modifier = modifier
             .graphicsLayer { alpha = appear.value }
             .clip(RoundedCornerShape(14.dp))
-            .background(MarsCardDark.copy(alpha = 0.88f))
+            .background(palette.card.copy(alpha = 0.88f))
             .padding(horizontal = 12.dp, vertical = 9.dp)
     )
 }
@@ -555,23 +557,24 @@ fun MarsMoodCard(
     mood: MarsMood,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalMarsPalette.current
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
-            .background(MarsCardDark)
-            .border(1.dp, Color(0xFF35353F), RoundedCornerShape(28.dp))
+            .background(palette.card)
+            .border(1.dp, MarsOutline.copy(alpha = 0.6f), RoundedCornerShape(28.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         MarsAvatar(mood = mood, size = 128.dp)
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("Настроение дня", color = MarsMuted, fontSize = 13.sp)
+            Text("Настроение дня", color = palette.textMuted, fontSize = 13.sp)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 mood.labelRu(),
-                color = MarsWhite,
+                color = palette.text,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp,
                 lineHeight = 24.sp
@@ -587,6 +590,7 @@ fun MarsEmptyState(
     modifier: Modifier = Modifier,
     showMarsImage: Boolean = true
 ) {
+    val palette = LocalMarsPalette.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -594,7 +598,7 @@ fun MarsEmptyState(
                 if (showMarsImage) {
                     Modifier
                         .clip(RoundedCornerShape(24.dp))
-                        .background(MarsCardDark)
+                        .background(palette.card)
                         .padding(vertical = 28.dp, horizontal = 20.dp)
                 } else {
                     Modifier.padding(vertical = 20.dp, horizontal = 4.dp)
@@ -608,7 +612,7 @@ fun MarsEmptyState(
         }
         Text(
             text = message,
-            color = MarsMuted,
+            color = palette.textMuted,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             textAlign = if (showMarsImage) TextAlign.Center else TextAlign.Start
@@ -623,13 +627,14 @@ fun MarsReactionBanner(
     modifier: Modifier = Modifier
 ) {
     if (message.isBlank()) return
+    val palette = LocalMarsPalette.current
     val reduce = LocalReduceAnimations.current
     val highlightTarget = when (mood) {
-        MarsMood.DONE -> MarsPeach.copy(alpha = 0.22f)
+        MarsMood.DONE -> palette.accent.copy(alpha = 0.20f)
         MarsMood.POSTPONED -> Color(0xFF3A3A28).copy(alpha = 0.65f)
         MarsMood.OVERDUE, MarsMood.STRICT -> Color(0xFF3A2A2A)
         MarsMood.WORKING -> Color(0xFF2A3340)
-        else -> MarsCardDark
+        else -> palette.card
     }
     val bg by animateColorAsState(
         targetValue = highlightTarget,
@@ -658,7 +663,7 @@ fun MarsReactionBanner(
             .background(bg)
             .border(
                 1.dp,
-                if (mood == MarsMood.DONE) MarsOrangeSoft else Color(0xFF30303A),
+                if (mood == MarsMood.DONE) palette.accentSoft else MarsOutline.copy(alpha = 0.6f),
                 RoundedCornerShape(24.dp)
             )
             .padding(14.dp),
@@ -666,29 +671,30 @@ fun MarsReactionBanner(
     ) {
         MarsAvatar(mood = mood, size = 56.dp)
         Spacer(modifier = Modifier.width(12.dp))
-        Text(text = message, color = MarsWhite, fontSize = 14.sp)
+        Text(text = message, color = palette.text, fontSize = 14.sp)
     }
 }
 
 @Composable
 fun SummaryChip(label: String, value: Int, accent: Color) {
+    val palette = LocalMarsPalette.current
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(MarsCardDark)
+            .background(palette.card)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         AnimatedCounterText(value = value, color = accent, fontSize = 18.sp)
-        Text(text = label, color = MarsMuted, fontSize = 11.sp)
+        Text(text = label, color = palette.textMuted, fontSize = 11.sp)
     }
 }
 
 @Composable
-fun StatusDot(status: TaskStatus, size: Dp = 10.dp) {
+fun StatusDot(status: TaskStatus, size: Dp = 10.dp, isOverdue: Boolean = false) {
     val reduce = LocalReduceAnimations.current
     val color by animateColorAsState(
-        targetValue = status.color(),
+        targetValue = statusColor(status, isOverdue),
         animationSpec = if (reduce) tween(0) else tween(220),
         label = "statusColor"
     )
@@ -713,18 +719,53 @@ fun StatusDot(status: TaskStatus, size: Dp = 10.dp) {
 }
 
 @Composable
+fun MarsProgressBar(
+    percent: Int,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalMarsPalette.current
+    val reduce = LocalReduceAnimations.current
+    val target = (percent.coerceIn(0, 100)) / 100f
+    val animated by animateFloatAsState(
+        targetValue = target,
+        animationSpec = if (reduce) tween(0) else tween(420, easing = FastOutSlowInEasing),
+        label = "projectProgress"
+    )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(palette.text.copy(alpha = 0.08f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(animated)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(palette.accent, palette.highlight)
+                    )
+                )
+        )
+    }
+}
+
+@Composable
 fun TaskCard(
     task: TaskItem,
     onClick: () -> Unit,
     isOverdue: Boolean = false,
     dueDateLabel: String? = null,
-    @Suppress("UNUSED_PARAMETER") light: Boolean = false,
-    subtaskProgress: String? = null,
+    projectName: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalMarsPalette.current
+    val effects = LocalEffectIntensity.current
     val isDone = task.status == TaskStatus.DONE
-    val titleColor = MarsWhite.copy(alpha = if (isDone) 0.72f else 1f)
-    val metaColor = MarsMuted.copy(alpha = if (isDone) 0.75f else 1f)
+    val titleColor = palette.text.copy(alpha = if (isDone) 0.72f else 1f)
+    val metaColor = palette.textMuted.copy(alpha = if (isDone) 0.75f else 1f)
     val reduce = LocalReduceAnimations.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -739,19 +780,18 @@ fun TaskCard(
         label = "taskAlpha"
     )
     val statusAccent = when {
-        isOverdue -> MarsOverdueGlow
-        task.status == TaskStatus.IN_PROGRESS -> MarsAccentProgress
+        isOverdue && !isDone -> StatusOverdue
         isDone -> StatusDone
-        else -> MarsOrange.copy(alpha = 0.55f)
+        else -> palette.accent.copy(alpha = 0.55f)
     }
     val idleBorder = when {
-        isOverdue -> MarsOverdueGlow.copy(alpha = 0.55f)
-        task.status == TaskStatus.IN_PROGRESS -> MarsAccentProgress.copy(alpha = 0.45f)
-        else -> Color(0xFF3A3A48)
+        isOverdue && !isDone -> StatusOverdue.copy(alpha = 0.55f)
+        isDone -> StatusDone.copy(alpha = 0.28f)
+        else -> MarsOutline
     }
     val borderColor by animateColorAsState(
         targetValue = when {
-            pressed && !reduce -> MarsOrange.copy(alpha = 0.55f)
+            pressed && !reduce -> palette.accent.copy(alpha = 0.55f)
             else -> idleBorder
         },
         animationSpec = if (reduce) tween(0) else tween(MarsMotion.PressDurationMs),
@@ -767,7 +807,9 @@ fun TaskCard(
         }
     }
     val cardShape = RoundedCornerShape(22.dp)
-    val glowAlpha = if (pressed && !reduce) 0.22f else if (isOverdue) 0.16f else 0.08f
+    val glowAlpha = effects.scale(
+        if (pressed && !reduce) 0.22f else if (isOverdue) 0.16f else 0.08f
+    )
 
     Box(
         modifier = modifier
@@ -789,7 +831,7 @@ fun TaskCard(
             onClick = onClick,
             interactionSource = interaction,
             shape = cardShape,
-            color = MarsGlass,
+            color = palette.glass,
             border = BorderStroke(1.dp, borderColor),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -800,14 +842,14 @@ fun TaskCard(
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color.White.copy(alpha = 0.06f),
+                                    Color.White.copy(alpha = effects.scale(0.06f)),
                                     Color.Transparent,
                                     statusAccent.copy(alpha = glowAlpha)
                                 )
                             )
                         )
                 )
-                if (isOverdue) {
+                if (isOverdue && !isDone) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterStart)
@@ -817,7 +859,7 @@ fun TaskCard(
                                 Brush.verticalGradient(
                                     listOf(
                                         Color.Transparent,
-                                        MarsOverdueGlow.copy(alpha = 0.85f),
+                                        StatusOverdue.copy(alpha = 0.85f),
                                         Color.Transparent
                                     )
                                 )
@@ -828,13 +870,13 @@ fun TaskCard(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StatusDot(task.status, 12.dp)
+                    StatusDot(task.status, 12.dp, isOverdue = isOverdue && !isDone)
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        if (isOverdue) {
+                        if (isOverdue && !isDone) {
                             Text(
                                 text = "Просрочено",
-                                color = MarsOverdueGlow,
+                                color = StatusOverdue,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.3.sp
@@ -854,8 +896,8 @@ fun TaskCard(
                                 append(task.status.labelRu)
                                 append(" · ")
                                 append(task.priority.labelRu)
-                                if (task.category.isNotBlank()) append(" · ${task.category}")
-                                if (isOverdue && !dueDateLabel.isNullOrBlank()) {
+                                if (!projectName.isNullOrBlank()) append(" · $projectName")
+                                if (!dueDateLabel.isNullOrBlank()) {
                                     append(" · ")
                                     append(dueDateLabel)
                                 }
@@ -863,15 +905,6 @@ fun TaskCard(
                             color = metaColor,
                             fontSize = 12.sp
                         )
-                        if (!subtaskProgress.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = subtaskProgress,
-                                color = MarsPeach.copy(alpha = if (isDone) 0.8f else 1f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
                     }
                 }
             }
@@ -885,10 +918,11 @@ fun NewTaskCtaBar(
     modifier: Modifier = Modifier,
     onVoice: (() -> Unit)? = null
 ) {
+    val palette = LocalMarsPalette.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MarsGraphite.copy(alpha = 0.92f))
+            .background(palette.background.copy(alpha = 0.92f))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -901,16 +935,16 @@ fun NewTaskCtaBar(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            MarsOrange.copy(alpha = 1f),
-                            Color(0xFFE85A00),
-                            MarsOrange.copy(alpha = 0.92f)
+                            palette.accent,
+                            palette.accentStrong,
+                            palette.accent.copy(alpha = 0.92f)
                         )
                     )
                 )
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
-                        listOf(MarsGoldGlow.copy(alpha = 0.55f), MarsOrange.copy(alpha = 0.2f))
+                        listOf(palette.highlight.copy(alpha = 0.55f), palette.accent.copy(alpha = 0.2f))
                     ),
                     shape = RoundedCornerShape(28.dp)
                 )
@@ -919,7 +953,7 @@ fun NewTaskCtaBar(
         ) {
             Text(
                 text = "＋ Новая задача",
-                color = MarsWhite,
+                color = palette.text,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -929,15 +963,15 @@ fun NewTaskCtaBar(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(MarsCardDark)
-                    .border(1.dp, Color(0xFF30303A), CircleShape)
+                    .background(palette.card)
+                    .border(1.dp, MarsOutline, CircleShape)
                     .marsPressable(onClick = onVoice),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Filled.Mic,
                     contentDescription = "Голосовой ввод",
-                    tint = MarsOrange,
+                    tint = palette.accent,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -952,15 +986,16 @@ fun MarsPrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    val palette = LocalMarsPalette.current
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(if (enabled) MarsOrange else MarsOrange.copy(alpha = 0.4f))
+            .background(if (enabled) palette.accent else palette.accent.copy(alpha = 0.4f))
             .marsPressable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = MarsWhite, fontWeight = FontWeight.SemiBold)
+        Text(text = text, color = palette.text, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -968,17 +1003,20 @@ fun MarsPrimaryButton(
 fun MarsSecondaryButton(
     text: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
+    val palette = LocalMarsPalette.current
+    val tint = if (enabled) palette.accent else palette.accent.copy(alpha = 0.4f)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .border(1.dp, MarsOrange, RoundedCornerShape(20.dp))
-            .marsPressable(onClick = onClick)
+            .border(1.dp, tint, RoundedCornerShape(20.dp))
+            .marsPressable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = MarsOrange, fontWeight = FontWeight.Medium)
+        Text(text = text, color = tint, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -991,25 +1029,54 @@ fun MarsDangerOutlineButton(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .border(1.5.dp, StatusNotDone, RoundedCornerShape(20.dp))
+            .border(1.5.dp, StatusDanger, RoundedCornerShape(20.dp))
             .marsPressable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = StatusNotDone, fontWeight = FontWeight.SemiBold)
+        Text(text = text, color = StatusDanger, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-fun FilterChipRow(
-    selected: TaskStatus?,
-    onSelect: (TaskStatus?) -> Unit
+fun MarsChoiceChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
 ) {
+    val palette = LocalMarsPalette.current
+    Text(
+        text = label,
+        color = if (selected) palette.text else palette.textMuted,
+        fontSize = 13.sp,
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) palette.accent.copy(alpha = 0.3f) else palette.card)
+            .border(
+                1.dp,
+                if (selected) palette.accent.copy(alpha = 0.7f) else MarsOutline.copy(alpha = 0.7f),
+                RoundedCornerShape(14.dp)
+            )
+            .marsPressable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+fun FilterChipRow(
+    selected: TaskFilter,
+    onSelect: (TaskFilter) -> Unit
+) {
+    val palette = LocalMarsPalette.current
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterPill("Все", selected == null) { onSelect(null) }
-        TaskStatus.entries.forEach { status ->
-            FilterPill(status.labelRu, selected == status, status.color()) {
-                onSelect(status)
+        TaskFilter.entries.forEach { filter ->
+            val accent = when (filter) {
+                TaskFilter.ALL -> palette.text
+                else -> filter.color()
+            }
+            FilterPill(filter.labelRu, selected == filter, accent) {
+                onSelect(filter)
             }
         }
     }
@@ -1019,9 +1086,11 @@ fun FilterChipRow(
 private fun FilterPill(
     label: String,
     active: Boolean,
-    accent: Color = MarsOrange,
+    accent: Color,
     onClick: () -> Unit
 ) {
+    val palette = LocalMarsPalette.current
+    val effects = LocalEffectIntensity.current
     val reduce = LocalReduceAnimations.current
     Box(
         modifier = Modifier
@@ -1032,19 +1101,19 @@ private fun FilterPill(
                         listOf(accent.copy(alpha = 0.28f), accent.copy(alpha = 0.14f))
                     )
                 } else {
-                    Brush.horizontalGradient(listOf(MarsCardDark, MarsCardDark))
+                    Brush.horizontalGradient(listOf(palette.card, palette.card))
                 }
             )
             .border(
                 width = 1.dp,
-                color = if (active) accent.copy(alpha = if (reduce) 0.7f else 0.85f) else Color(0xFF35353F),
+                color = if (active) accent.copy(alpha = if (reduce) 0.7f else 0.85f) else MarsOutline,
                 shape = RoundedCornerShape(16.dp)
             )
             .then(
-                if (active && !reduce) {
+                if (active && !reduce && effects.factor > 0f) {
                     Modifier.background(
                         Brush.radialGradient(
-                            listOf(accent.copy(alpha = 0.12f), Color.Transparent),
+                            listOf(accent.copy(alpha = effects.scale(0.12f)), Color.Transparent),
                             radius = 80f
                         )
                     )
@@ -1053,7 +1122,7 @@ private fun FilterPill(
             .marsPressable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Text(text = label, color = if (active) MarsWhite else MarsMuted, fontSize = 12.sp)
+        Text(text = label, color = if (active) palette.text else palette.textMuted, fontSize = 12.sp)
     }
 }
 
@@ -1063,10 +1132,4 @@ fun ProvideReduceAnimations(
     content: @Composable () -> Unit
 ) {
     CompositionLocalProvider(LocalReduceAnimations provides reduce, content = content)
-}
-
-/** Не показывает ключ сопряжения в UI-сообщениях. */
-fun redactSyncSecrets(message: String, syncKey: String): String {
-    if (syncKey.isBlank()) return message
-    return message.replace(syncKey, "••••", ignoreCase = false)
 }

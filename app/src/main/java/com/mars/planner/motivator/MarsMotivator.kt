@@ -10,47 +10,37 @@ data class MarsReaction(
 )
 
 object MarsMotivator {
+    /** Реакция на смену статуса: только «открыта» и «выполнено». */
     fun reactionForStatusChange(
         newStatus: TaskStatus,
-        postponeCount: Int = 0,
+        overdueCount: Int = 0,
         mode: MotivatorMode = MotivatorMode.ADAPTIVE
     ): MarsReaction {
-        if (mode == MotivatorMode.OFF) {
-            return MarsReaction(MarsMood.DEFAULT, "")
-        }
+        if (mode == MotivatorMode.OFF) return MarsReaction(MarsMood.DEFAULT, "")
         return when (newStatus) {
             TaskStatus.DONE -> MarsReaction(
                 MarsMood.DONE,
-                if (postponeCount >= 2) {
-                    "Ты закрыл задачу, которую переносил $postponeCount раз${plural(postponeCount)}. Горжусь тобой."
+                if (overdueCount > 0) {
+                    "Задача закрыта, хотя срок уже прошёл. Это честная работа — горжусь."
                 } else {
                     "Отлично! Марс доволен — ещё один шаг сделан."
                 }
             )
-            TaskStatus.IN_PROGRESS -> MarsReaction(
+            TaskStatus.OPEN -> MarsReaction(
                 MarsMood.WORKING,
-                "Спокойно продолжай. Один шаг за другим — и получится."
-            )
-            TaskStatus.POSTPONED -> postponeReaction(postponeCount, mode)
-            TaskStatus.NOT_DONE -> MarsReaction(
-                MarsMood.OVERDUE,
-                "Честно. Давай выберем: выполнить сейчас, перенести с причиной или отменить."
-            )
-            TaskStatus.CANCELLED -> MarsReaction(
-                MarsMood.DEFAULT,
-                "Хорошо. Иногда отказ — тоже решение. Идём дальше."
-            )
-            TaskStatus.NEW -> MarsReaction(
-                MarsMood.DEFAULT,
-                "Новая задача записана. Когда будешь готов — начнём."
+                "Задача снова открыта. Спокойно продолжим — один шаг за другим."
             )
         }
     }
 
-    fun reactionForDeferredEnhancement(): MarsReaction = MarsReaction(
-        MarsMood.SUPPORTIVE,
-        "Основное дело важнее. Я сохраню идею — вернёмся к ней, когда будет подходящий момент."
-    )
+    /** Реакция на перенос срока задачи. */
+    fun reactionForPostpone(mode: MotivatorMode = MotivatorMode.ADAPTIVE): MarsReaction {
+        if (mode == MotivatorMode.OFF) return MarsReaction(MarsMood.DEFAULT, "")
+        return MarsReaction(
+            MarsMood.POSTPONED,
+            "Срок перенесён. Выбери реальную дату — я напомню вовремя."
+        )
+    }
 
     fun reactionForManyOverdue(overdueCount: Int, mode: MotivatorMode): MarsReaction {
         if (mode == MotivatorMode.OFF) return MarsReaction(MarsMood.DEFAULT, "")
@@ -59,7 +49,7 @@ object MarsMotivator {
         return if (strict) {
             MarsReaction(
                 MarsMood.STRICT,
-                "Много открытых дел. Выбери 1–3 реально выполнимые задачи на сегодня — остальное подождёт."
+                "Просрочено задач: $overdueCount. Выбери 1–3 реально выполнимые на сегодня — остальное подождёт."
             )
         } else {
             MarsReaction(
@@ -69,35 +59,18 @@ object MarsMotivator {
         }
     }
 
-    fun greetingMessage(userName: String, summaryDone: Int, summaryTotal: Int): String {
+    /** Реакция на завершение проекта: все задачи проекта выполнены. */
+    fun reactionForProjectCompleted(projectName: String, mode: MotivatorMode): MarsReaction {
+        if (mode == MotivatorMode.OFF) return MarsReaction(MarsMood.DEFAULT, "")
+        return MarsReaction(MarsMood.DONE, "Проект «$projectName» закрыт полностью. Хорошая работа.")
+    }
+
+    fun greetingMessage(userName: String, done: Int, total: Int): String {
         val name = userName.ifBlank { "друг" }
         return when {
-            summaryTotal == 0 -> "Привет, $name. Сегодня можно начать с малого."
-            summaryDone == summaryTotal -> "Привет, $name. Все задачи дня закрыты — красиво!"
-            else -> "Привет, $name. Сегодня $summaryDone из $summaryTotal уже сделано."
+            total == 0 -> "Привет, $name. Сегодня можно начать с малого."
+            done == total -> "Привет, $name. Все задачи дня закрыты — красиво!"
+            else -> "Привет, $name. Сегодня $done из $total уже сделано."
         }
-    }
-
-    private fun postponeReaction(postponeCount: Int, mode: MotivatorMode): MarsReaction {
-        val soft = mode == MotivatorMode.SOFT ||
-            (mode == MotivatorMode.ADAPTIVE && postponeCount <= 1) ||
-            mode == MotivatorMode.OFF
-        return if (soft || postponeCount <= 1) {
-            MarsReaction(
-                MarsMood.POSTPONED,
-                "Ничего страшного. Выбери реальное новое время — я напомню."
-            )
-        } else {
-            MarsReaction(
-                MarsMood.STRICT,
-                "Эту задачу уже переносили $postponeCount раз${plural(postponeCount)}. Давай решим: выполнить, перенести с причиной, разбить на шаги или отменить."
-            )
-        }
-    }
-
-    private fun plural(n: Int): String = when {
-        n % 10 == 1 && n % 100 != 11 -> ""
-        n % 10 in 2..4 && n % 100 !in 12..14 -> "а"
-        else -> "а"
     }
 }
