@@ -12,11 +12,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,8 +36,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -38,11 +49,9 @@ import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.ProjectItem
 import com.mars.planner.domain.model.ProjectWithStats
 import com.mars.planner.ui.components.MarsChoiceChip
-import com.mars.planner.ui.components.MarsDangerOutlineButton
 import com.mars.planner.ui.components.MarsEmptyState
 import com.mars.planner.ui.components.MarsPrimaryButton
 import com.mars.planner.ui.components.MarsProgressBar
-import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.marsListItemMotion
 import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.StatusDone
@@ -99,7 +108,7 @@ internal fun ProjectsScreen(vm: AppViewModel, nav: NavHostController) {
         Spacer(modifier = Modifier.height(12.dp))
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 if (visible.isEmpty()) {
@@ -111,10 +120,10 @@ internal fun ProjectsScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                 }
                 itemsIndexed(visible, key = { _, it -> it.project.id }) { index, stats ->
-                    ProjectCard(
+                    CompactProjectCard(
                         stats = stats,
                         modifier = Modifier.marsListItemMotion(index),
-                        onOpenTasks = { nav.navigate(Routes.Tasks) },
+                        onOpen = { nav.navigate(Routes.Tasks) },
                         onEdit = {
                             editing = stats.project
                             showEditor = true
@@ -177,55 +186,118 @@ internal fun ProjectsScreen(vm: AppViewModel, nav: NavHostController) {
 }
 
 @Composable
-private fun ProjectCard(
+private fun CompactProjectCard(
     stats: ProjectWithStats,
     modifier: Modifier = Modifier,
-    onOpenTasks: () -> Unit,
+    onOpen: () -> Unit,
     onEdit: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit
 ) {
     val palette = LocalMarsPalette.current
+    val archived = stats.project.archived
+    var menuOpen by remember { mutableStateOf(false) }
+    val openCount = stats.openTasks
+    val doneCount = stats.doneTasks
+    val percent = stats.progressPercent
+    val cardAlpha = if (archived) 0.78f else 1f
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(palette.card)
-            .clickable(onClick = onOpenTasks)
-            .padding(16.dp)
+            .alpha(cardAlpha)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (archived) palette.card.copy(alpha = 0.72f) else palette.card)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpen)
+                    .padding(start = 14.dp, top = 12.dp, bottom = 8.dp)
+            ) {
+                Text(
+                    text = stats.project.name,
+                    color = palette.text,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (stats.project.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stats.project.description,
+                        color = palette.textMuted,
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier
+                        .semantics { contentDescription = "Меню проекта ${stats.project.name}" }
+                        .size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = null,
+                        tint = palette.textMuted
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Изменить") },
+                        onClick = {
+                            menuOpen = false
+                            onEdit()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (archived) "Вернуть" else "В архив") },
+                        onClick = {
+                            menuOpen = false
+                            onArchive()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Удалить") },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpen)
+                .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
+        ) {
             Text(
-                text = stats.project.name,
-                color = palette.text,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 17.sp,
-                modifier = Modifier.weight(1f)
+                text = "Открыто $openCount · Выполнено $doneCount · $percent%",
+                color = if (stats.totalTasks > 0 && doneCount == stats.totalTasks) {
+                    StatusDone
+                } else {
+                    palette.textMuted
+                },
+                fontSize = 12.sp
             )
-            Text(
-                text = "${stats.doneTasks}/${stats.totalTasks}",
-                color = if (stats.totalTasks > 0 && stats.doneTasks == stats.totalTasks) StatusDone else palette.textMuted,
-                fontSize = 13.sp
-            )
+            Spacer(modifier = Modifier.height(6.dp))
+            MarsProgressBar(percent = percent)
         }
-        if (stats.project.description.isNotBlank()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(stats.project.description, color = palette.textMuted, fontSize = 13.sp)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        MarsProgressBar(percent = stats.progressPercent)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text("Готово ${stats.progressPercent}%", color = palette.textMuted, fontSize = 12.sp)
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MarsSecondaryButton("Изменить", onClick = onEdit)
-            MarsSecondaryButton(
-                text = if (stats.project.archived) "Вернуть" else "В архив",
-                onClick = onArchive
-            )
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        MarsDangerOutlineButton("Удалить", onClick = onDelete)
     }
 }
 

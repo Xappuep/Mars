@@ -26,7 +26,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,16 +55,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import com.mars.planner.domain.logic.TaskGroupsLogic
 import com.mars.planner.domain.logic.TaskRules
+import com.mars.planner.domain.logic.TaskStatusToggle
 import com.mars.planner.domain.model.AppTheme
 import com.mars.planner.domain.model.EffectIntensity
 import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.MotivatorMode
 import com.mars.planner.domain.model.TaskFilter
+import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskStatus
 import com.mars.planner.ui.components.FilterChipRow
 import com.mars.planner.ui.components.MarsBackgroundPresence
@@ -133,9 +144,12 @@ internal fun ScreenTitleRow(
 internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
     val allTasks by vm.allTasks.collectAsState()
     val projects by vm.projects.collectAsState()
+    val settings by vm.settings.collectAsState()
+    val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
     val today = remember { LocalDate.now() }
+    val palette = LocalMarsPalette.current
 
     val searched = allTasks.filter { task ->
         val projectName = projects.find { it.syncUuid == task.projectSyncUuid }?.name.orEmpty()
@@ -149,13 +163,77 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
     val openCount = searched.count { it.status == TaskStatus.OPEN }
     val overdueCount = searched.count { TaskRules.isOverdue(it, today) }
 
+    val groups = remember(filtered, projects, settings.tasksNoProjectPinnedTop) {
+        TaskGroupsLogic.buildGroups(
+            projects = projects,
+            filteredTasks = filtered,
+            noProjectPinnedTop = settings.tasksNoProjectPinnedTop
+        )
+    }
+    val storedExpanded = remember(settings.tasksGroupExpandedKeys) {
+        TaskGroupsLogic.decodeExpandedKeys(settings.tasksGroupExpandedKeys)
+    }
+    var pendingToggleKeys by remember { mutableStateOf(setOf<String>()) }
+    /** Монотонные метки принятых жестов (SystemClock.elapsedRealtime), по syncUuid. */
+    var lastToggleAcceptedAtMs by remember { mutableStateOf(mapOf<String, Long>()) }
+
+    // Drop stale expand keys for deleted projects without writing sync data.
+    LaunchedEffect(groups, settings.tasksGroupsUserConfigured, settings.tasksGroupExpandedKeys) {
+        if (!settings.tasksGroupsUserConfigured) return@LaunchedEffect
+        val pruned = TaskGroupsLogic.pruneExpandedKeys(storedExpanded, groups)
+        if (pruned != storedExpanded) {
+            vm.updateSettings {
+                it.copy(tasksGroupExpandedKeys = TaskGroupsLogic.encodeExpandedKeys(pruned))
+            }
+        }
+    }
+
+    fun persistToggle(key: String) {
+        scope.launch {
+            val (configured, next) = TaskGroupsLogic.toggleExpanded(
+                key = key,
+                groups = groups,
+                userConfigured = settings.tasksGroupsUserConfigured,
+                storedExpandedKeys = storedExpanded
+            )
+            vm.updateSettings {
+                it.copy(
+                    tasksGroupsUserConfigured = configured,
+                    tasksGroupExpandedKeys = TaskGroupsLogic.encodeExpandedKeys(next)
+                )
+            }
+        }
+    }
+
+    fun toggleDone(task: TaskItem) {
+        val key = task.syncUuid
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!TaskStatusToggle.acceptGesture(
+                taskKey = key,
+                pendingKeys = pendingToggleKeys,
+                lastAcceptedAtMs = lastToggleAcceptedAtMs,
+                nowElapsedMs = now
+            )
+        ) {
+            return
+        }
+        lastToggleAcceptedAtMs = TaskStatusToggle.recordAccepted(lastToggleAcceptedAtMs, key, now)
+        pendingToggleKeys = pendingToggleKeys + key
+        scope.launch {
+            try {
+                vm.changeStatus(task.id, TaskStatusToggle.nextStatus(task.status))
+            } finally {
+                pendingToggleKeys = pendingToggleKeys - key
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp)
             .padding(top = 20.dp)
     ) {
-        val palette = LocalMarsPalette.current
         Text("Задачи", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
@@ -185,7 +263,7 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
         Spacer(modifier = Modifier.height(12.dp))
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 88.dp)
             ) {
                 if (filtered.isEmpty()) {
@@ -200,21 +278,143 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
                         )
                     }
                 }
-                itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
-                    TaskCard(
-                        task = task,
-                        isOverdue = TaskRules.isOverdue(task, today),
-                        dueDateLabel = dueLabel(task.dueAtEpochMillis),
-                        projectName = vm.projectName(task.projectSyncUuid),
-                        onClick = { nav.navigate(Routes.detail(task.id)) },
-                        modifier = Modifier.marsListItemMotion(index)
+                groups.forEach { group ->
+                    val expanded = TaskGroupsLogic.isExpanded(
+                        key = group.key,
+                        groups = groups,
+                        userConfigured = settings.tasksGroupsUserConfigured,
+                        storedExpandedKeys = storedExpanded
                     )
+                    item(key = "hdr-${group.key}") {
+                        TaskGroupHeader(
+                            title = group.title,
+                            count = group.count,
+                            expanded = expanded,
+                            showNoProjectMenu = group.isNoProject,
+                            pinnedTop = settings.tasksNoProjectPinnedTop,
+                            onToggle = { persistToggle(group.key) },
+                            onPinTop = {
+                                scope.launch {
+                                    vm.updateSettings { it.copy(tasksNoProjectPinnedTop = true) }
+                                }
+                            },
+                            onUnpin = {
+                                scope.launch {
+                                    vm.updateSettings { it.copy(tasksNoProjectPinnedTop = false) }
+                                }
+                            }
+                        )
+                    }
+                    if (expanded) {
+                        items(group.tasks, key = { "task-${group.key}-${it.id}" }) { task ->
+                            TaskCard(
+                                task = task,
+                                isOverdue = TaskRules.isOverdue(task, today),
+                                dueDateLabel = dueLabel(task.dueAtEpochMillis),
+                                projectName = null,
+                                onClick = { nav.navigate(Routes.detail(task.id)) },
+                                onToggleDone = { toggleDone(task) },
+                                toggleEnabled = TaskStatusToggle.acceptGesture(
+                                    task.syncUuid,
+                                    pendingToggleKeys
+                                ),
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
             NewTaskCtaBar(
                 onNewTask = { nav.navigate(Routes.edit()) },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
+        }
+    }
+}
+
+@Composable
+private fun TaskGroupHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    showNoProjectMenu: Boolean,
+    pinnedTop: Boolean,
+    onToggle: () -> Unit,
+    onPinTop: () -> Unit,
+    onUnpin: () -> Unit
+) {
+    val palette = LocalMarsPalette.current
+    var menuOpen by remember { mutableStateOf(false) }
+    val expandLabel = if (expanded) "Свернуть группу $title" else "Развернуть группу $title"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.backgroundElevated.copy(alpha = 0.92f))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .semantics { contentDescription = expandLabel },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = null,
+            tint = palette.accent,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = title,
+            color = palette.text,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = count.toString(),
+            color = palette.textMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 6.dp)
+        )
+        if (showNoProjectMenu) {
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .semantics { contentDescription = "Меню группы Без проекта" }
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = null,
+                        tint = palette.textMuted
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false }
+                ) {
+                    if (!pinnedTop) {
+                        DropdownMenuItem(
+                            text = { Text("Закрепить наверху") },
+                            onClick = {
+                                menuOpen = false
+                                onPinTop()
+                            }
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("Вернуть вниз") },
+                            onClick = {
+                                menuOpen = false
+                                onUnpin()
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }

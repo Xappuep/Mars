@@ -62,7 +62,21 @@ data class AppSettings(
      */
     val requiresPcPrimarySnapshot: Boolean = false,
     /** Отчёт о миграции данных Mars 1.x ещё не показан пользователю. */
-    val migrationReportPending: Boolean = false
+    val migrationReportPending: Boolean = false,
+
+    /**
+     * Локальный UI списка «Задачи»: пользователь уже менял раскрытие групп.
+     * Пока false — применяется стартовая композиция (Без проекта + первая проектная).
+     * Не входит в sync и в SettingsDto экспорта.
+     */
+    val tasksGroupsUserConfigured: Boolean = false,
+    /**
+     * Ключи раскрытых групп (UUID проекта или `__no_project__`), по одному на строку.
+     * Имеет смысл при [tasksGroupsUserConfigured] == true.
+     */
+    val tasksGroupExpandedKeys: String = "",
+    /** Локально: группа «Без проекта» закреплена сверху списка. */
+    val tasksNoProjectPinnedTop: Boolean = false
 )
 
 class SettingsRepository(private val context: Context) {
@@ -96,6 +110,9 @@ class SettingsRepository(private val context: Context) {
         val pendingSnapshotAckId = stringPreferencesKey("pending_snapshot_ack_id")
         val requiresPcPrimarySnapshot = booleanPreferencesKey("requires_pc_primary_snapshot")
         val migrationReportPending = booleanPreferencesKey("migration_report_pending")
+        val tasksGroupsUserConfigured = booleanPreferencesKey("tasks_groups_user_configured")
+        val tasksGroupExpandedKeys = stringPreferencesKey("tasks_group_expanded_keys")
+        val tasksNoProjectPinnedTop = booleanPreferencesKey("tasks_no_project_pinned_top")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -148,7 +165,10 @@ class SettingsRepository(private val context: Context) {
         lastSyncError = this[Keys.lastSyncError] ?: "",
         pendingSnapshotAckId = this[Keys.pendingSnapshotAckId] ?: "",
         requiresPcPrimarySnapshot = this[Keys.requiresPcPrimarySnapshot] ?: false,
-        migrationReportPending = this[Keys.migrationReportPending] ?: false
+        migrationReportPending = this[Keys.migrationReportPending] ?: false,
+        tasksGroupsUserConfigured = this[Keys.tasksGroupsUserConfigured] ?: false,
+        tasksGroupExpandedKeys = this[Keys.tasksGroupExpandedKeys] ?: "",
+        tasksNoProjectPinnedTop = this[Keys.tasksNoProjectPinnedTop] ?: false
     )
 
     private fun MutablePreferences.write(next: AppSettings) {
@@ -178,5 +198,8 @@ class SettingsRepository(private val context: Context) {
         this[Keys.pendingSnapshotAckId] = next.pendingSnapshotAckId
         this[Keys.requiresPcPrimarySnapshot] = next.requiresPcPrimarySnapshot
         this[Keys.migrationReportPending] = next.migrationReportPending
+        this[Keys.tasksGroupsUserConfigured] = next.tasksGroupsUserConfigured
+        this[Keys.tasksGroupExpandedKeys] = next.tasksGroupExpandedKeys
+        this[Keys.tasksNoProjectPinnedTop] = next.tasksNoProjectPinnedTop
     }
 }

@@ -100,6 +100,9 @@ dependencies {
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
     androidTestImplementation("com.google.truth:truth:1.4.4")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

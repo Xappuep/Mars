@@ -37,8 +37,11 @@ data class ProjectWithStats(
     val totalTasks: Int,
     val doneTasks: Int
 ) {
+    val openTasks: Int
+        get() = (totalTasks - doneTasks).coerceAtLeast(0)
+
     val progressPercent: Int
-        get() = if (totalTasks == 0) 0 else ((doneTasks.toDouble() / totalTasks) * 100).toInt()
+        get() = if (totalTasks == 0) 0 else ((doneTasks.toDouble() / totalTasks) * 100).toInt().coerceIn(0, 100)
 }
 
 data class DaySummary(

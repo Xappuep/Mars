@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -45,6 +46,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -67,7 +69,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +80,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mars.planner.R
+import com.mars.planner.domain.logic.TaskStatusToggle
 import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskItem
@@ -759,7 +765,10 @@ fun TaskCard(
     isOverdue: Boolean = false,
     dueDateLabel: String? = null,
     projectName: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Отдельный жест выполнения; null — декоративная точка без действия (Сегодня/Календарь). */
+    onToggleDone: (() -> Unit)? = null,
+    toggleEnabled: Boolean = true
 ) {
     val palette = LocalMarsPalette.current
     val effects = LocalEffectIntensity.current
@@ -810,10 +819,13 @@ fun TaskCard(
     val glowAlpha = effects.scale(
         if (pressed && !reduce) 0.22f else if (isOverdue) 0.16f else 0.08f
     )
+    val splitClicks = onToggleDone != null
 
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .testTag(TaskCardTestTags.ROW)
+            .semantics { contentDescription = "Строка задачи ${task.title}" }
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -827,86 +839,245 @@ fun TaskCard(
                 .clip(cardShape)
                 .background(Color.Black.copy(alpha = 0.28f))
         )
-        Surface(
-            onClick = onClick,
-            interactionSource = interaction,
-            shape = cardShape,
-            color = palette.glass,
-            border = BorderStroke(1.dp, borderColor),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = effects.scale(0.06f)),
-                                    Color.Transparent,
-                                    statusAccent.copy(alpha = glowAlpha)
-                                )
+        // Важно: при splitClicks НЕ использовать Surface(onClick) —
+        // кликабельный оверлоад вешает clickable на весь контейнер и
+        // ломает независимые зоны круга и тела карточки (см. Material3 Surface).
+        if (splitClicks) {
+            Surface(
+                shape = cardShape,
+                color = palette.glass,
+                border = BorderStroke(1.dp, borderColor),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TaskCardBody(
+                    task = task,
+                    isOverdue = isOverdue,
+                    isDone = isDone,
+                    titleColor = titleColor,
+                    metaColor = metaColor,
+                    statusAccent = statusAccent,
+                    glowAlpha = glowAlpha,
+                    dueDateLabel = dueDateLabel,
+                    projectName = projectName,
+                    effectsScale = { effects.scale(it) },
+                    splitClicks = true,
+                    onOpen = onClick,
+                    onToggleDone = onToggleDone,
+                    toggleEnabled = toggleEnabled,
+                    openInteraction = interaction
+                )
+            }
+        } else {
+            Surface(
+                onClick = onClick,
+                interactionSource = interaction,
+                shape = cardShape,
+                color = palette.glass,
+                border = BorderStroke(1.dp, borderColor),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TaskCardBody(
+                    task = task,
+                    isOverdue = isOverdue,
+                    isDone = isDone,
+                    titleColor = titleColor,
+                    metaColor = metaColor,
+                    statusAccent = statusAccent,
+                    glowAlpha = glowAlpha,
+                    dueDateLabel = dueDateLabel,
+                    projectName = projectName,
+                    effectsScale = { effects.scale(it) },
+                    splitClicks = false,
+                    onOpen = onClick,
+                    onToggleDone = null,
+                    toggleEnabled = true,
+                    openInteraction = interaction
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskCardBody(
+    task: TaskItem,
+    isOverdue: Boolean,
+    isDone: Boolean,
+    titleColor: Color,
+    metaColor: Color,
+    statusAccent: Color,
+    glowAlpha: Float,
+    dueDateLabel: String?,
+    projectName: String?,
+    effectsScale: (Float) -> Float,
+    splitClicks: Boolean,
+    onOpen: () -> Unit,
+    onToggleDone: (() -> Unit)?,
+    toggleEnabled: Boolean,
+    openInteraction: MutableInteractionSource
+) {
+    Box {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = effectsScale(0.06f)),
+                            Color.Transparent,
+                            statusAccent.copy(alpha = glowAlpha)
+                        )
+                    )
+                )
+        )
+        if (isOverdue && !isDone) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(3.dp)
+                    .height(48.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Transparent,
+                                StatusOverdue.copy(alpha = 0.85f),
+                                Color.Transparent
                             )
                         )
+                    )
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = if (splitClicks) 4.dp else 16.dp,
+                    end = 12.dp,
+                    top = 8.dp,
+                    bottom = 8.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (splitClicks && onToggleDone != null) {
+                TaskDoneToggle(
+                    status = task.status,
+                    enabled = toggleEnabled,
+                    onToggle = onToggleDone,
+                    modifier = Modifier.testTag(TaskCardTestTags.DONE_TOGGLE)
                 )
-                if (isOverdue && !isDone) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .width(3.dp)
-                            .height(48.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        Color.Transparent,
-                                        StatusOverdue.copy(alpha = 0.85f),
-                                        Color.Transparent
-                                    )
-                                )
+            } else {
+                StatusDot(task.status, 12.dp, isOverdue = isOverdue && !isDone)
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            // Вся оставшаяся площадь строки — единая зона открытия (не только буквы).
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp)
+                    .testTag(TaskCardTestTags.OPEN_AREA)
+                    .semantics { contentDescription = "Открыть задачу ${task.title}" }
+                    .then(
+                        if (splitClicks) {
+                            Modifier.clickable(
+                                interactionSource = openInteraction,
+                                indication = null,
+                                onClick = onOpen
                             )
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 8.dp)) {
+                    if (isOverdue && !isDone) {
+                        Text(
+                            text = "Просрочено",
+                            color = StatusOverdue,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.3.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                    Text(
+                        text = task.title,
+                        color = titleColor,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = buildString {
+                            append(task.status.labelRu)
+                            append(" · ")
+                            append(task.priority.labelRu)
+                            if (!projectName.isNullOrBlank()) append(" · $projectName")
+                            if (!dueDateLabel.isNullOrBlank()) {
+                                append(" · ")
+                                append(dueDateLabel)
+                            }
+                        },
+                        color = metaColor,
+                        fontSize = 12.sp
                     )
                 }
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    StatusDot(task.status, 12.dp, isOverdue = isOverdue && !isDone)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        if (isOverdue && !isDone) {
-                            Text(
-                                text = "Просрочено",
-                                color = StatusOverdue,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.3.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                        }
-                        Text(
-                            text = task.title,
-                            color = titleColor,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = buildString {
-                                append(task.status.labelRu)
-                                append(" · ")
-                                append(task.priority.labelRu)
-                                if (!projectName.isNullOrBlank()) append(" · $projectName")
-                                if (!dueDateLabel.isNullOrBlank()) {
-                                    append(" · ")
-                                    append(dueDateLabel)
-                                }
-                            },
-                            color = metaColor,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
+            }
+        }
+    }
+}
+
+object TaskCardTestTags {
+    const val ROW = "task_card_row"
+    const val OPEN_AREA = "task_card_open_area"
+    const val DONE_TOGGLE = "task_card_done_toggle"
+}
+
+/** Круглый элемент выполнения (зона нажатия ≥ 44 dp). */
+@Composable
+fun TaskDoneToggle(
+    status: TaskStatus,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val palette = LocalMarsPalette.current
+    val isDone = status == TaskStatus.DONE
+    val label = if (!enabled) {
+        "Элемент временно недоступен"
+    } else {
+        TaskStatusToggle.accessibilityLabel(status)
+    }
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .semantics { contentDescription = label }
+            .clickable(enabled = enabled, onClick = onToggle),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .border(
+                    width = 2.dp,
+                    color = if (isDone) StatusDone else palette.accent.copy(alpha = 0.85f),
+                    shape = CircleShape
+                )
+                .background(
+                    if (isDone) StatusDone.copy(alpha = 0.92f) else Color.Transparent
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isDone) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
     }
