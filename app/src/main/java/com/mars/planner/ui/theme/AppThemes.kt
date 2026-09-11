@@ -216,8 +216,9 @@ object AppThemes {
             border = Color(0xFF9BB4CC),
             text = Color(0xFF0F2A42),
             textMuted = Color(0xFF3F5A72),
-            accent = Color(0xFF007A8C),
-            accentAlt = Color(0xFF5A48B8),
+            // Холодный голубой акцент (часть 3, мобильный прототип).
+            accent = Color(0xFF2B9BC8),
+            accentAlt = Color(0xFF4AA8D4),
             onAccent = Color(0xFFFFFFFF),
             danger = Color(0xFFB01818),
             warning = Color(0xFF8A5A00),
@@ -233,9 +234,9 @@ object AppThemes {
             labelCaps = false,
             monoHeadings = false,
             isLight = true,
-            panelFillAlpha = 0.90f,
-            cardFillAlpha = 0.94f,
-            dialogFillAlpha = 0.98f
+            panelFillAlpha = 0.88f,
+            cardFillAlpha = 0.90f,
+            dialogFillAlpha = 0.96f
         )
 
         ThemeId.ASH_AMBER -> AppThemeTokens(
@@ -306,8 +307,9 @@ object AppThemes {
             border = Color(0xFFA8A298),
             text = Color(0xFF181614),
             textMuted = Color(0xFF585652),
-            accent = Color(0xFF524C42),
-            accentAlt = Color(0xFF7A6A48),
+            // Тёплый медно-бетонный акцент (часть 3); без голубого свечения.
+            accent = Color(0xFFB87333),
+            accentAlt = Color(0xFFC4894A),
             onAccent = Color(0xFFFFFFFF),
             danger = Color(0xFF7A2418),
             warning = Color(0xFF6A4E10),
@@ -323,9 +325,9 @@ object AppThemes {
             labelCaps = false,
             monoHeadings = false,
             isLight = true,
-            panelFillAlpha = 0.92f,
-            cardFillAlpha = 0.95f,
-            dialogFillAlpha = 0.98f
+            panelFillAlpha = 0.90f,
+            cardFillAlpha = 0.92f,
+            dialogFillAlpha = 0.96f
         )
 
         ThemeId.BUNKER -> AppThemeTokens(

@@ -94,6 +94,7 @@ import com.mars.planner.ui.theme.StatusDanger
 import com.mars.planner.ui.theme.StatusDone
 import com.mars.planner.ui.theme.StatusOpen
 import com.mars.planner.ui.theme.StatusOverdue
+import com.mars.planner.ui.theme.ThemeSceneBackgrounds
 import java.io.IOException
 
 val LocalReduceAnimations = compositionLocalOf { false }
@@ -534,22 +535,26 @@ fun MarsEmptyState(
     showMarsImage: Boolean = true
 ) {
     val palette = LocalMarsPalette.current
+    val showAvatar = showMarsImage && !ThemeSceneBackgrounds.hasEmbeddedMars(palette.theme)
     Column(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (showMarsImage) {
+                if (showAvatar) {
                     Modifier
                         .clip(RoundedCornerShape(24.dp))
                         .background(palette.card)
                         .padding(vertical = 28.dp, horizontal = 20.dp)
                 } else {
-                    Modifier.padding(vertical = 20.dp, horizontal = 4.dp)
+                    Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(palette.card.copy(alpha = if (palette.isLight) 0.90f else 0.75f))
+                        .padding(vertical = 20.dp, horizontal = 20.dp)
                 }
             ),
-        horizontalAlignment = if (showMarsImage) Alignment.CenterHorizontally else Alignment.Start
+        horizontalAlignment = if (showAvatar) Alignment.CenterHorizontally else Alignment.Start
     ) {
-        if (showMarsImage) {
+        if (showAvatar) {
             MarsAvatar(mood = mood, size = 96.dp, animateChange = false)
             Spacer(modifier = Modifier.height(14.dp))
         }
@@ -558,7 +563,7 @@ fun MarsEmptyState(
             color = palette.textMuted,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
-            textAlign = if (showMarsImage) TextAlign.Center else TextAlign.Start
+            textAlign = if (showAvatar) TextAlign.Center else TextAlign.Start
         )
     }
 }

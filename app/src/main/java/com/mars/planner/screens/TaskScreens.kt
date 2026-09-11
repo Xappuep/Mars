@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,6 +50,8 @@ import com.mars.planner.ui.components.StatusDot
 import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.StatusDone
 import com.mars.planner.ui.theme.StatusOverdue
+import com.mars.planner.ui.theme.ThemeSceneScreen
+import com.mars.planner.ui.theme.ThemeSceneShell
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.Calendar
@@ -95,13 +98,7 @@ internal fun TaskEditScreen(vm: AppViewModel, nav: NavHostController, taskId: Lo
 
     if (!loaded) return
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    val formBody: @Composable ColumnScope.() -> Unit = {
         ScreenTitleRow(if (taskId == null) "Новая задача" else "Правка задачи", nav)
 
         OutlinedTextField(
@@ -196,6 +193,31 @@ internal fun TaskEditScreen(vm: AppViewModel, nav: NavHostController, taskId: Lo
         )
         Spacer(modifier = Modifier.height(24.dp))
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.TaskForm,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = formBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = formBody
+            )
+        }
+    )
 }
 
 /** Экран задачи: детали, быстрые действия по статусу и переносу срока. */
@@ -219,13 +241,7 @@ internal fun TaskDetailScreen(vm: AppViewModel, nav: NavHostController, taskId: 
 
     val overdue = TaskRules.isOverdue(current, today)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    val detailBody: @Composable ColumnScope.() -> Unit = {
         ScreenTitleRow("Задача", nav)
 
         Column(
@@ -298,6 +314,31 @@ internal fun TaskDetailScreen(vm: AppViewModel, nav: NavHostController, taskId: 
         )
         Spacer(modifier = Modifier.height(24.dp))
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.TaskDetail,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = detailBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = detailBody
+            )
+        }
+    )
 
     if (showPostpone) {
         PostponeDialog(

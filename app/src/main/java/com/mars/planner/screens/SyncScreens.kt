@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,8 @@ import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.StatusDone
 import com.mars.planner.ui.theme.StatusOpen
 import com.mars.planner.ui.theme.StatusOverdue
+import com.mars.planner.ui.theme.ThemeSceneScreen
+import com.mars.planner.ui.theme.ThemeSceneShell
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -146,13 +149,7 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    val syncBody: @Composable ColumnScope.() -> Unit = {
         ScreenTitleRow("Синхронизация с ПК", nav)
 
         Column(
@@ -362,6 +359,31 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
         )
         Spacer(modifier = Modifier.height(24.dp))
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.Sync,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = syncBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = syncBody
+            )
+        }
+    )
 
     if (showManualQr) {
         ManualQrDialog(

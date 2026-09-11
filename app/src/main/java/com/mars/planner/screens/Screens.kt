@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -87,6 +88,10 @@ import com.mars.planner.ui.theme.MarsOutline
 import com.mars.planner.ui.theme.StatusDone
 import com.mars.planner.ui.theme.StatusOpen
 import com.mars.planner.ui.theme.StatusOverdue
+import com.mars.planner.ui.theme.ThemeCalendarPanel
+import com.mars.planner.ui.theme.ThemeSceneBackgrounds
+import com.mars.planner.ui.theme.ThemeSceneScreen
+import com.mars.planner.ui.theme.ThemeSceneShell
 import com.mars.planner.ui.theme.appTheme
 import com.mars.planner.ui.theme.effects
 import com.mars.planner.ui.theme.paletteFor
@@ -223,12 +228,7 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp)
-            .padding(top = 20.dp)
-    ) {
+    val tasksBody: @Composable ColumnScope.() -> Unit = {
         Text("Задачи", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
@@ -325,6 +325,29 @@ internal fun TasksScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.Tasks,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 20.dp),
+                content = tasksBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 12.dp),
+                content = tasksBody
+            )
+        }
+    )
 }
 
 @Composable
@@ -429,75 +452,114 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
     val firstDow = month.atDay(1).dayOfWeek.value % 7
     val daysInMonth = month.lengthOfMonth()
 
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                month.format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy", java.util.Locale("ru"))),
-                color = palette.text,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = { month = month.minusMonths(1) }) { Text("<", color = palette.accent) }
-            TextButton(onClick = {
-                month = YearMonth.now()
-                selectedDay = LocalDate.now()
-            }) { Text("Сегодня", color = palette.accent) }
-            TextButton(onClick = { month = month.plusMonths(1) }) { Text(">", color = palette.accent) }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEach {
-                Text(it, color = palette.textMuted, modifier = Modifier.width(40.dp), fontSize = 12.sp)
+    val sceneTheme = ThemeSceneBackgrounds.hasScene(palette.theme)
+
+    val calendarBody: @Composable ColumnScope.() -> Unit = {
+        val grid: @Composable ColumnScope.() -> Unit = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    month.format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy", java.util.Locale("ru"))),
+                    color = palette.text,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { month = month.minusMonths(1) }) { Text("<", color = palette.accent) }
+                TextButton(onClick = {
+                    month = YearMonth.now()
+                    selectedDay = LocalDate.now()
+                }) {
+                    Text(
+                        "Сегодня",
+                        color = palette.accent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                TextButton(onClick = { month = month.plusMonths(1) }) { Text(">", color = palette.accent) }
             }
-        }
-        val cells = buildList {
-            repeat((firstDow + 6) % 7) { add(null) }
-            for (d in 1..daysInMonth) add(month.atDay(d))
-        }
-        cells.chunked(7).forEach { week ->
+            Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                week.forEach { day ->
-                    val dayList = if (day == null) emptyList() else byDay[day].orEmpty()
-                    val hasOverdue = dayList.any { TaskRules.isOverdue(it, today) }
-                    val allDone = dayList.isNotEmpty() && dayList.all { it.status == TaskStatus.DONE }
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                when {
-                                    day == null -> Color.Transparent
-                                    day == selectedDay -> palette.accent.copy(alpha = 0.25f)
-                                    day == today -> palette.card
-                                    else -> Color.Transparent
-                                }
-                            )
-                            .clickable(enabled = day != null) { selectedDay = day!! },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (day != null) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(day.dayOfMonth.toString(), color = palette.text, fontSize = 13.sp)
-                                if (dayList.isNotEmpty()) {
+                listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEach {
+                    Text(it, color = palette.textMuted, modifier = Modifier.width(40.dp), fontSize = 12.sp)
+                }
+            }
+            val cells = buildList {
+                repeat((firstDow + 6) % 7) { add(null) }
+                for (d in 1..daysInMonth) add(month.atDay(d))
+            }
+            cells.chunked(7).forEach { week ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    week.forEach { day ->
+                        val dayList = if (day == null) emptyList() else byDay[day].orEmpty()
+                        val hasOverdue = dayList.any { TaskRules.isOverdue(it, today) }
+                        val allDone = dayList.isNotEmpty() && dayList.all { it.status == TaskStatus.DONE }
+                        val selected = day == selectedDay
+                        val isToday = day == today
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    when {
+                                        day == null -> Color.Transparent
+                                        selected -> palette.accent.copy(alpha = if (sceneTheme) 0.42f else 0.25f)
+                                        isToday -> if (sceneTheme) palette.accent.copy(alpha = 0.18f) else palette.card
+                                        else -> if (sceneTheme) palette.card.copy(alpha = 0.92f) else Color.Transparent
+                                    }
+                                )
+                                .then(
+                                    if (sceneTheme && (selected || isToday)) {
+                                        Modifier.border(
+                                            width = if (selected) 2.dp else 1.dp,
+                                            color = palette.accent.copy(alpha = if (selected) 1f else 0.55f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .clickable(enabled = day != null) { selectedDay = day!! },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (day != null) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = dayList.size.toString(),
-                                        color = when {
-                                            hasOverdue -> StatusOverdue
-                                            allDone -> StatusDone
-                                            else -> palette.accent
-                                        },
-                                        fontSize = 9.sp
+                                        day.dayOfMonth.toString(),
+                                        color = palette.text,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (sceneTheme && (selected || isToday)) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Normal
+                                        }
                                     )
+                                    if (dayList.isNotEmpty()) {
+                                        Text(
+                                            text = dayList.size.toString(),
+                                            color = when {
+                                                hasOverdue -> StatusOverdue
+                                                allDone -> StatusDone
+                                                else -> palette.accent
+                                            },
+                                            fontSize = 9.sp,
+                                            fontWeight = if (sceneTheme) FontWeight.SemiBold else FontWeight.Normal
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                repeat(7 - week.size) {
-                    Spacer(modifier = Modifier.size(40.dp))
+                    repeat(7 - week.size) {
+                        Spacer(modifier = Modifier.size(40.dp))
+                    }
                 }
             }
+        }
+
+        if (sceneTheme) {
+            ThemeCalendarPanel(content = grid)
+        } else {
+            grid()
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text("Задачи дня", color = palette.text, fontWeight = FontWeight.SemiBold)
@@ -518,6 +580,25 @@ internal fun CalendarScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.Calendar,
+        fallback = {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                content = calendarBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                content = calendarBody
+            )
+        }
+    )
 }
 
 @Composable
@@ -593,13 +674,7 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    val settingsBody: @Composable ColumnScope.() -> Unit = {
         Text("Настройки", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = settings.userName,
@@ -753,6 +828,31 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         if (message != null) Text(message!!, color = palette.highlight, fontSize = 13.sp)
         Spacer(modifier = Modifier.height(24.dp))
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.Settings,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = settingsBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = settingsBody
+            )
+        }
+    )
 }
 
 @Composable

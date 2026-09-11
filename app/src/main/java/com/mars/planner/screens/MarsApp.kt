@@ -51,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -95,12 +96,15 @@ import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.ProvideReduceAnimations
 import com.mars.planner.ui.components.TaskCard
 import com.mars.planner.ui.components.marsListItemMotion
+import com.mars.planner.ui.theme.LocalAppTheme
 import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.MarsAmbientBackground
 import com.mars.planner.ui.theme.MarsBottomNavigationBar
 import com.mars.planner.ui.theme.MarsMotion
 import com.mars.planner.ui.theme.ProvideMarsAppearance
 import com.mars.planner.ui.theme.StatusOverdue
+import com.mars.planner.ui.theme.ThemeHeroLayout
+import com.mars.planner.ui.theme.ThemeSceneBackgrounds
 import com.mars.planner.ui.theme.TodayStatsPanel
 import com.mars.planner.ui.theme.appTheme
 import com.mars.planner.ui.theme.effects
@@ -346,78 +350,90 @@ fun MarsApp() {
     ProvideMarsAppearance(settingsGlobal.appTheme, settingsGlobal.effects) {
         ProvideReduceAnimations(reduceMotion) {
             val palette = LocalMarsPalette.current
-            Scaffold(
-                containerColor = palette.background,
-                bottomBar = {
-                    if (showBottomBar) {
-                        val navItems = listOf(
-                            Triple(Routes.Today, "Сегодня", Icons.Filled.Home),
-                            Triple(Routes.Tasks, "Задачи", Icons.Filled.TaskAlt),
-                            Triple(Routes.Projects, "Проекты", Icons.Filled.Folder),
-                            Triple(Routes.Calendar, "Календарь", Icons.Filled.CalendarMonth),
-                            Triple(Routes.Settings, "Настройки", Icons.Filled.Settings)
-                        )
-                        MarsBottomNavigationBar(
-                            route = route,
-                            items = navItems,
-                            onNavigate = { r -> nav.navigate(r) { launchSingleTop = true } }
-                        )
-                    }
-                }
-            ) { padding ->
-                val taskEnter = fadeIn(tween(MarsMotion.NavTransitionMs)) +
-                    scaleIn(initialScale = 0.96f, animationSpec = tween(MarsMotion.NavTransitionMs)) +
-                    slideInHorizontally(animationSpec = tween(MarsMotion.NavTransitionMs)) { it / 12 }
-                val taskExit = fadeOut(tween(200)) +
-                    scaleOut(targetScale = 0.98f, animationSpec = tween(200)) +
-                    slideOutHorizontally(animationSpec = tween(200)) { it / 14 }
-                val taskPopEnter = fadeIn(tween(240)) +
-                    slideInHorizontally(animationSpec = tween(240)) { -it / 14 }
-                val taskPopExit = fadeOut(tween(200)) +
-                    scaleOut(targetScale = 0.96f, animationSpec = tween(200)) +
-                    slideOutHorizontally(animationSpec = tween(200)) { it / 12 }
-                val noMotionEnter: EnterTransition = EnterTransition.None
-                val noMotionExit: ExitTransition = ExitTransition.None
+            val sceneTheme = ThemeSceneBackgrounds.hasScene(palette.theme)
 
-                NavHost(
-                    navController = nav,
-                    startDestination = Routes.Today,
-                    modifier = Modifier.padding(padding)
-                ) {
-                    composable(Routes.Today) { TodayScreen(vm, nav) }
-                    composable(Routes.Tasks) { TasksScreen(vm, nav) }
-                    composable(Routes.Projects) { ProjectsScreen(vm, nav) }
-                    composable(Routes.Calendar) { CalendarScreen(vm, nav) }
-                    composable(Routes.Stats) { StatsScreen(vm, nav) }
-                    composable(Routes.Settings) { SettingsScreen(vm, nav) }
-                    composable(Routes.MarsImages) { MarsImagesPreviewScreen(nav) }
-                    composable(Routes.Sync) { SyncScreen(vm, nav) }
-                    composable(Routes.SyncGuide) { SyncGuideScreen(nav) }
-                    composable(Routes.Conflicts) { ConflictsScreen(vm, nav) }
-                    composable(
-                        route = "task_edit?id={id}",
-                        arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
-                        enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
-                        exitTransition = { if (reduceMotion) noMotionExit else taskExit },
-                        popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
-                        popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
-                    ) { entry ->
-                        val id = entry.arguments?.getLong("id") ?: -1L
-                        TaskEditScreen(vm, nav, if (id < 0) null else id)
+            @Composable
+            fun AppScaffold() {
+                Scaffold(
+                    // Сценовые темы рисуют фон на экранах (Hero/CompactHeader/ContentSurface),
+                    // а не одним полноэкранным слоем под всем UI.
+                    containerColor = if (sceneTheme) {
+                        LocalAppTheme.current.bg
+                    } else {
+                        palette.background
+                    },
+                    bottomBar = {
+                        if (showBottomBar) {
+                            val navItems = listOf(
+                                Triple(Routes.Today, "Сегодня", Icons.Filled.Home),
+                                Triple(Routes.Tasks, "Задачи", Icons.Filled.TaskAlt),
+                                Triple(Routes.Projects, "Проекты", Icons.Filled.Folder),
+                                Triple(Routes.Calendar, "Календарь", Icons.Filled.CalendarMonth),
+                                Triple(Routes.Settings, "Настройки", Icons.Filled.Settings)
+                            )
+                            MarsBottomNavigationBar(
+                                route = route,
+                                items = navItems,
+                                onNavigate = { r -> nav.navigate(r) { launchSingleTop = true } }
+                            )
+                        }
                     }
-                    composable(
-                        route = "task_detail/{id}",
-                        arguments = listOf(navArgument("id") { type = NavType.LongType }),
-                        enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
-                        exitTransition = { if (reduceMotion) noMotionExit else taskExit },
-                        popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
-                        popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
-                    ) { entry ->
-                        TaskDetailScreen(vm, nav, entry.arguments!!.getLong("id"))
+                ) { padding ->
+                    val taskEnter = fadeIn(tween(MarsMotion.NavTransitionMs)) +
+                        scaleIn(initialScale = 0.96f, animationSpec = tween(MarsMotion.NavTransitionMs)) +
+                        slideInHorizontally(animationSpec = tween(MarsMotion.NavTransitionMs)) { it / 12 }
+                    val taskExit = fadeOut(tween(200)) +
+                        scaleOut(targetScale = 0.98f, animationSpec = tween(200)) +
+                        slideOutHorizontally(animationSpec = tween(200)) { it / 14 }
+                    val taskPopEnter = fadeIn(tween(240)) +
+                        slideInHorizontally(animationSpec = tween(240)) { -it / 14 }
+                    val taskPopExit = fadeOut(tween(200)) +
+                        scaleOut(targetScale = 0.96f, animationSpec = tween(200)) +
+                        slideOutHorizontally(animationSpec = tween(200)) { it / 12 }
+                    val noMotionEnter: EnterTransition = EnterTransition.None
+                    val noMotionExit: ExitTransition = ExitTransition.None
+
+                    NavHost(
+                        navController = nav,
+                        startDestination = Routes.Today,
+                        modifier = Modifier.padding(padding)
+                    ) {
+                        composable(Routes.Today) { TodayScreen(vm, nav) }
+                        composable(Routes.Tasks) { TasksScreen(vm, nav) }
+                        composable(Routes.Projects) { ProjectsScreen(vm, nav) }
+                        composable(Routes.Calendar) { CalendarScreen(vm, nav) }
+                        composable(Routes.Stats) { StatsScreen(vm, nav) }
+                        composable(Routes.Settings) { SettingsScreen(vm, nav) }
+                        composable(Routes.MarsImages) { MarsImagesPreviewScreen(nav) }
+                        composable(Routes.Sync) { SyncScreen(vm, nav) }
+                        composable(Routes.SyncGuide) { SyncGuideScreen(nav) }
+                        composable(Routes.Conflicts) { ConflictsScreen(vm, nav) }
+                        composable(
+                            route = "task_edit?id={id}",
+                            arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
+                            enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
+                            exitTransition = { if (reduceMotion) noMotionExit else taskExit },
+                            popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
+                            popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
+                        ) { entry ->
+                            val id = entry.arguments?.getLong("id") ?: -1L
+                            TaskEditScreen(vm, nav, if (id < 0) null else id)
+                        }
+                        composable(
+                            route = "task_detail/{id}",
+                            arguments = listOf(navArgument("id") { type = NavType.LongType }),
+                            enterTransition = { if (reduceMotion) noMotionEnter else taskEnter },
+                            exitTransition = { if (reduceMotion) noMotionExit else taskExit },
+                            popEnterTransition = { if (reduceMotion) noMotionEnter else taskPopEnter },
+                            popExitTransition = { if (reduceMotion) noMotionExit else taskPopExit }
+                        ) { entry ->
+                            TaskDetailScreen(vm, nav, entry.arguments!!.getLong("id"))
+                        }
                     }
                 }
             }
 
+            AppScaffold()
             MigrationReportDialog(vm)
         }
     }
@@ -521,123 +537,135 @@ internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
             listState.firstVisibleItemIndex * 120f + listState.firstVisibleItemScrollOffset
         }
     }
+    val sceneTheme = ThemeSceneBackgrounds.hasScene(palette.theme)
+    val pagePad = Modifier.padding(horizontal = 20.dp)
 
-    ScreenBackground {
-        Box(modifier = Modifier.fillMaxSize()) {
-            MarsBackgroundPresence(
-                mood = displayMood,
-                presenceAlpha = marsAlpha,
-                scrollOffsetPx = scrollOffsetPx,
-                interactionNudge = marsNudge,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 76.dp)
+    @Composable
+    fun TodayTitleBlock(topPad: Boolean) {
+        Column(modifier = pagePad.padding(top = if (topPad) 16.dp else 12.dp, bottom = 4.dp)) {
+            Text(
+                text = "Ежедневник Марса",
+                color = palette.accent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
             )
-            val pagePad = Modifier.padding(horizontal = 20.dp)
-            LazyColumn(
-                state = listState,
-                contentPadding = PaddingValues(bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Сегодня",
+                color = palette.text,
+                fontWeight = FontWeight.Bold,
+                fontSize = 32.sp,
+                lineHeight = 36.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = dateLabel, color = palette.textMuted, fontSize = 14.sp)
+        }
+    }
+
+    @Composable
+    fun TodayWorkList(includeTitle: Boolean) {
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (includeTitle) {
+                item { TodayTitleBlock(topPad = true) }
+            }
+            item {
+                TodayStatsPanel(summary = summary, modifier = pagePad.padding(top = 8.dp))
+            }
+            item {
+                Row(modifier = pagePad.horizontalScroll(rememberScrollState())) {
+                    FilterChipRow(filter) { filter = it }
+                }
+            }
+            if (conflicts.isNotEmpty()) {
                 item {
-                    Column(modifier = pagePad.padding(top = 16.dp, bottom = 4.dp)) {
+                    Column(modifier = pagePad) {
                         Text(
-                            text = "Ежедневник Марса",
-                            color = palette.accent,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            text = "Расхождений с ПК: ${conflicts.size}",
+                            color = StatusOverdue,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Сегодня",
-                            color = palette.text,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 32.sp,
-                            lineHeight = 36.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = dateLabel, color = palette.textMuted, fontSize = 14.sp)
-                    }
-                }
-                item {
-                    TodayStatsPanel(summary = summary, modifier = pagePad)
-                }
-                item {
-                    Row(modifier = pagePad.horizontalScroll(rememberScrollState())) {
-                        FilterChipRow(filter) { filter = it }
-                    }
-                }
-                if (conflicts.isNotEmpty()) {
-                    item {
-                        Column(modifier = pagePad) {
-                            Text(
-                                text = "Расхождений с ПК: ${conflicts.size}",
-                                color = StatusOverdue,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            MarsSecondaryButton(
-                                "Разобрать расхождения",
-                                onClick = { nav.navigate(Routes.Conflicts) }
-                            )
-                        }
-                    }
-                }
-                item {
-                    Row(modifier = pagePad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Spacer(modifier = Modifier.height(6.dp))
                         MarsSecondaryButton(
-                            text = if (pendingSync > 0) "Синхронизация ($pendingSync)" else "Синхронизация",
-                            onClick = { nav.navigate(Routes.Sync) }
-                        )
-                        MarsSecondaryButton("Статистика", onClick = { nav.navigate(Routes.Stats) })
-                    }
-                }
-                if (voiceMessage != null) {
-                    item {
-                        Text(voiceMessage!!, color = palette.highlight, fontSize = 13.sp, modifier = pagePad)
-                    }
-                }
-                if (tasks.isEmpty()) {
-                    item {
-                        Column(
-                            modifier = pagePad
-                                .then(contentWidth)
-                                .padding(top = 12.dp, bottom = 8.dp)
-                        ) {
-                            Text(
-                                text = "На сегодня задач нет",
-                                color = palette.textMuted,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "День можно оставить свободным или добавить важное.",
-                                color = palette.textMuted.copy(alpha = 0.78f),
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp
-                            )
-                        }
-                    }
-                }
-                itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
-                    val overdue = TaskRules.isOverdue(task, todayDate)
-                    Column(
-                        modifier = pagePad
-                            .then(contentWidth)
-                            .marsListItemMotion(index)
-                    ) {
-                        TaskCard(
-                            task = task,
-                            isOverdue = overdue,
-                            dueDateLabel = dueLabel(task.dueAtEpochMillis),
-                            projectName = vm.projectName(task.projectSyncUuid),
-                            onClick = { nav.navigate(Routes.detail(task.id)) }
+                            "Разобрать расхождения",
+                            onClick = { nav.navigate(Routes.Conflicts) }
                         )
                     }
                 }
             }
+            item {
+                Row(modifier = pagePad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MarsSecondaryButton(
+                        text = if (pendingSync > 0) "Синхронизация ($pendingSync)" else "Синхронизация",
+                        onClick = { nav.navigate(Routes.Sync) }
+                    )
+                    MarsSecondaryButton("Статистика", onClick = { nav.navigate(Routes.Stats) })
+                }
+            }
+            if (voiceMessage != null) {
+                item {
+                    Text(voiceMessage!!, color = palette.highlight, fontSize = 13.sp, modifier = pagePad)
+                }
+            }
+            if (tasks.isEmpty()) {
+                item {
+                    Column(
+                        modifier = pagePad
+                            .then(contentWidth)
+                            .padding(top = 12.dp, bottom = 8.dp)
+                    ) {
+                        Text(
+                            text = "На сегодня задач нет",
+                            color = palette.textMuted,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "День можно оставить свободным или добавить важное.",
+                            color = palette.textMuted.copy(alpha = 0.78f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+            itemsIndexed(filtered, key = { _, task -> task.id }) { index, task ->
+                val overdue = TaskRules.isOverdue(task, todayDate)
+                Column(
+                    modifier = pagePad
+                        .then(contentWidth)
+                        .marsListItemMotion(index)
+                ) {
+                    TaskCard(
+                        task = task,
+                        isOverdue = overdue,
+                        dueDateLabel = dueLabel(task.dueAtEpochMillis),
+                        projectName = vm.projectName(task.projectSyncUuid),
+                        onClick = { nav.navigate(Routes.detail(task.id)) }
+                    )
+                }
+            }
+        }
+    }
+
+    if (sceneTheme) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            ThemeHeroLayout(
+                heroOverlay = {
+                    TodayTitleBlock(topPad = true)
+                },
+                workContent = {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        TodayWorkList(includeTitle = false)
+                    }
+                }
+            )
             NewTaskCtaBar(
                 onNewTask = {
                     marsNudge++
@@ -646,6 +674,29 @@ internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 onVoice = { micPermission.launch(Manifest.permission.RECORD_AUDIO) },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
+        }
+    } else {
+        ScreenBackground {
+            Box(modifier = Modifier.fillMaxSize()) {
+                MarsBackgroundPresence(
+                    mood = displayMood,
+                    presenceAlpha = marsAlpha,
+                    scrollOffsetPx = scrollOffsetPx,
+                    interactionNudge = marsNudge,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 76.dp)
+                )
+                TodayWorkList(includeTitle = true)
+                NewTaskCtaBar(
+                    onNewTask = {
+                        marsNudge++
+                        nav.navigate(Routes.edit())
+                    },
+                    onVoice = { micPermission.launch(Manifest.permission.RECORD_AUDIO) },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
         }
     }
 }

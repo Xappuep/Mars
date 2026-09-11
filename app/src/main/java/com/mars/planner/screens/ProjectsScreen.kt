@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -53,8 +55,11 @@ import com.mars.planner.ui.components.MarsEmptyState
 import com.mars.planner.ui.components.MarsPrimaryButton
 import com.mars.planner.ui.components.MarsProgressBar
 import com.mars.planner.ui.components.marsListItemMotion
+import com.mars.planner.ui.theme.LocalAppTheme
 import com.mars.planner.ui.theme.LocalMarsPalette
 import com.mars.planner.ui.theme.StatusDone
+import com.mars.planner.ui.theme.ThemeSceneScreen
+import com.mars.planner.ui.theme.ThemeSceneShell
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -70,12 +75,7 @@ internal fun ProjectsScreen(vm: AppViewModel, nav: NavHostController) {
 
     val visible = projects.filter { it.project.archived == showArchive }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp)
-            .padding(top = 20.dp)
-    ) {
+    val projectsBody: @Composable ColumnScope.() -> Unit = {
         Text("Проекты", color = palette.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -139,6 +139,29 @@ internal fun ProjectsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.Projects,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 20.dp),
+                content = projectsBody
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 12.dp),
+                content = projectsBody
+            )
+        }
+    )
 
     if (showEditor) {
         ProjectEditorDialog(
@@ -355,6 +378,7 @@ internal fun ProjectPicker(
     onSelect: (String?) -> Unit
 ) {
     val palette = LocalMarsPalette.current
+    val surface = LocalAppTheme.current.raised.copy(alpha = 1f)
     Column(modifier = Modifier.fillMaxWidth()) {
         Text("Проект", color = palette.textMuted, fontSize = 13.sp)
         Spacer(modifier = Modifier.height(6.dp))
@@ -362,7 +386,7 @@ internal fun ProjectPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(palette.card)
+                .background(surface)
         ) {
             ProjectPickerRow("Без проекта", selectedUuid == null) { onSelect(null) }
             projects.forEach { project ->
@@ -380,7 +404,7 @@ private fun ProjectPickerRow(label: String, selected: Boolean, onClick: () -> Un
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) palette.accent.copy(alpha = 0.2f) else palette.card)
+            .background(if (selected) palette.accent.copy(alpha = 0.2f) else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically

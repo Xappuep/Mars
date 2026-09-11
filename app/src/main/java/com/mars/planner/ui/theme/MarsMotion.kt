@@ -21,8 +21,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -33,14 +36,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import com.mars.planner.domain.model.DaySummary
 import com.mars.planner.ui.components.LocalReduceAnimations
 
@@ -50,6 +58,9 @@ object MarsMotion {
     const val ListStaggerMs = 28
     const val NavTransitionMs = 280
     const val MarsParallaxMaxDp = 10f
+    /** Полный цикл пульсации выбранного пункта нижней навигации (мс). */
+    const val NavPulseCycleMs = 2000
+    const val NavPulseScalePeak = 1.025f
 }
 
 @Composable
@@ -81,8 +92,10 @@ fun MarsAmbientBackground(
     val reduce = LocalReduceAnimations.current
     val palette = LocalMarsPalette.current
     val effects = LocalEffectIntensity.current
+    // Сценовые темы (часть 3 corr1) рисуют фон по режимам Hero/CompactHeader/ContentSurface
+    // на отдельных экранах — здесь только спокойный градиент/заливка.
     Box(modifier = modifier.fillMaxSize()) {
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(
                 brush = Brush.verticalGradient(
                     listOf(
@@ -93,7 +106,6 @@ fun MarsAmbientBackground(
                     )
                 )
             )
-            // Лёгкое осветление зоны контента (слева), без цветного пятна у Марса.
             val contentLift = effects.scale(if (!reduce) 0.04f else 0.025f)
             drawCircle(
                 brush = Brush.radialGradient(
@@ -108,7 +120,7 @@ fun MarsAmbientBackground(
                 center = Offset(size.width * 0.22f, size.height * 0.18f)
             )
         }
-        if (!reduce && effects.factor > 0f) {
+        if (!ThemeSceneBackgrounds.hasScene(palette.theme) && !reduce && effects.factor > 0f) {
             val infinite = rememberInfiniteTransition(label = "ambient")
             val drift by infinite.animateFloat(
                 initialValue = 0f,
@@ -119,7 +131,7 @@ fun MarsAmbientBackground(
                 ),
                 label = "ambientDrift"
             )
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
                 val gridStep = 48.dp.toPx()
                 var x = 0f
                 while (x < size.width) {
@@ -156,8 +168,8 @@ fun MarsAmbientBackground(
                     dx += dotStep
                 }
             }
-        } else {
-            Canvas(Modifier.fillMaxSize()) {
+        } else if (!ThemeSceneBackgrounds.hasScene(palette.theme)) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
                 val gridStep = 56.dp.toPx()
                 var x = 0f
                 while (x < size.width) {
@@ -258,6 +270,9 @@ fun MarsBottomNavigationBar(
 ) {
     val reduce = LocalReduceAnimations.current
     val palette = LocalMarsPalette.current
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val appResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    val pulseEnabled = !reduce && appResumed
     val selectedIndex = items.indexOfFirst { it.first == route }.coerceAtLeast(0)
     val animatedIndex by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
@@ -277,15 +292,25 @@ fun MarsBottomNavigationBar(
             )
         ) {
             items.forEach { (r, label, icon) ->
+                val selected = route == r
                 NavigationBarItem(
-                    selected = route == r,
+                    selected = selected,
                     onClick = { onNavigate(r) },
-                    icon = { androidx.compose.material3.Icon(icon, contentDescription = label) },
+                    icon = {
+                        SoftGlowNavIcon(
+                            icon = icon,
+                            label = label,
+                            selected = selected,
+                            accent = palette.accent,
+                            pulseEnabled = pulseEnabled && selected
+                        )
+                    },
                     label = { Text(label, fontSize = 10.sp) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = palette.accent,
                         selectedTextColor = palette.accent,
-                        indicatorColor = palette.accent.copy(alpha = 0.14f),
+                        // Без штатной «таблетки» — один мягкий ореол в SoftGlowNavIcon.
+                        indicatorColor = Color.Transparent,
                         unselectedIconColor = palette.textMuted,
                         unselectedTextColor = palette.textMuted
                     )
@@ -339,5 +364,96 @@ fun MarsBottomNavigationBar(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SoftGlowNavIcon(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    pulseEnabled: Boolean
+) {
+    if (pulseEnabled) {
+        PulsingSoftGlowNavIcon(icon = icon, label = label, accent = accent)
+    } else {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .drawBehind {
+                    if (selected) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    accent.copy(alpha = 0.16f),
+                                    accent.copy(alpha = 0.06f),
+                                    Color.Transparent
+                                ),
+                                center = center,
+                                radius = size.minDimension * 0.62f
+                            )
+                        )
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = label)
+        }
+    }
+}
+
+@Composable
+private fun PulsingSoftGlowNavIcon(
+    icon: ImageVector,
+    label: String,
+    accent: Color
+) {
+    val half = MarsMotion.NavPulseCycleMs / 2
+    val infinite = rememberInfiniteTransition(label = "navPulse")
+    val scale by infinite.animateFloat(
+        initialValue = 1f,
+        targetValue = MarsMotion.NavPulseScalePeak,
+        animationSpec = infiniteRepeatable(
+            animation = tween(half, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "navPulseScale"
+    )
+    val halo by infinite.animateFloat(
+        initialValue = 0.10f,
+        targetValue = 0.24f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(half, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "navPulseHalo"
+    )
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .drawBehind {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            accent.copy(alpha = halo),
+                            accent.copy(alpha = halo * 0.35f),
+                            Color.Transparent
+                        ),
+                        center = center,
+                        radius = size.minDimension * 0.62f
+                    )
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+        )
     }
 }
