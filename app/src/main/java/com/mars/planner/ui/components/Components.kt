@@ -527,69 +527,6 @@ private fun MarsBackgroundPresenceBody(
 }
 
 @Composable
-fun MarsPresenceReaction(
-    message: String,
-    modifier: Modifier = Modifier
-) {
-    if (message.isBlank()) return
-    val palette = LocalMarsPalette.current
-    val reduce = LocalReduceAnimations.current
-    val appear = remember { Animatable(if (reduce) 1f else 0f) }
-    LaunchedEffect(message) {
-        if (reduce) {
-            appear.snapTo(1f)
-        } else {
-            appear.snapTo(0f)
-            appear.animateTo(1f, tween(280))
-        }
-    }
-    Text(
-        text = message,
-        color = palette.text.copy(alpha = 0.92f),
-        fontSize = 13.sp,
-        lineHeight = 17.sp,
-        maxLines = 3,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier
-            .graphicsLayer { alpha = appear.value }
-            .clip(RoundedCornerShape(14.dp))
-            .background(palette.card.copy(alpha = 0.88f))
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-    )
-}
-
-@Composable
-fun MarsMoodCard(
-    mood: MarsMood,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalMarsPalette.current
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(palette.card)
-            .border(1.dp, MarsOutline.copy(alpha = 0.6f), RoundedCornerShape(28.dp))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MarsAvatar(mood = mood, size = 128.dp)
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Настроение дня", color = palette.textMuted, fontSize = 13.sp)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                mood.labelRu(),
-                color = palette.text,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 20.sp,
-                lineHeight = 24.sp
-            )
-        }
-    }
-}
-
-@Composable
 fun MarsEmptyState(
     mood: MarsMood,
     message: String,
@@ -623,61 +560,6 @@ fun MarsEmptyState(
             fontWeight = FontWeight.Medium,
             textAlign = if (showMarsImage) TextAlign.Center else TextAlign.Start
         )
-    }
-}
-
-@Composable
-fun MarsReactionBanner(
-    mood: MarsMood,
-    message: String,
-    modifier: Modifier = Modifier
-) {
-    if (message.isBlank()) return
-    val palette = LocalMarsPalette.current
-    val reduce = LocalReduceAnimations.current
-    val highlightTarget = when (mood) {
-        MarsMood.DONE -> palette.accent.copy(alpha = 0.20f)
-        MarsMood.POSTPONED -> Color(0xFF3A3A28).copy(alpha = 0.65f)
-        MarsMood.OVERDUE, MarsMood.STRICT -> Color(0xFF3A2A2A)
-        MarsMood.WORKING -> Color(0xFF2A3340)
-        else -> palette.card
-    }
-    val bg by animateColorAsState(
-        targetValue = highlightTarget,
-        animationSpec = if (reduce) tween(0) else tween(320),
-        label = "reactionBg"
-    )
-    val appear = remember { Animatable(if (reduce) 1f else 0.92f) }
-    LaunchedEffect(mood, message) {
-        if (reduce) {
-            appear.snapTo(1f)
-        } else {
-            appear.snapTo(0.92f)
-            appear.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
-        }
-    }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = appear.value
-                scaleY = appear.value
-                alpha = if (reduce) 1f else appear.value.coerceIn(0.5f, 1f)
-            }
-            .clip(RoundedCornerShape(24.dp))
-            .background(bg)
-            .border(
-                1.dp,
-                if (mood == MarsMood.DONE) palette.accentSoft else MarsOutline.copy(alpha = 0.6f),
-                RoundedCornerShape(24.dp)
-            )
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MarsAvatar(mood = mood, size = 56.dp)
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(text = message, color = palette.text, fontSize = 14.sp)
     }
 }
 

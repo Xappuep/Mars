@@ -11,7 +11,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.mars.planner.domain.model.MotivatorMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -23,7 +22,6 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("m
  * только в `SecureTokenStore` под ключом Android Keystore.
  */
 data class AppSettings(
-    val motivatorMode: MotivatorMode = MotivatorMode.ADAPTIVE,
     val morningReminderEnabled: Boolean = true,
     val morningReminderHour: Int = 9,
     val morningReminderMinute: Int = 0,
@@ -33,7 +31,6 @@ data class AppSettings(
     val defaultSnoozeMinutes: Int = 30,
     val lastSyncAt: Long = 0L,
     val userName: String = "",
-    val demoLoaded: Boolean = false,
     /** Декоративные анимации UI: при true — мгновенная смена состояний. */
     val reduceAnimations: Boolean = false,
 
@@ -82,6 +79,7 @@ data class AppSettings(
 class SettingsRepository(private val context: Context) {
 
     private object Keys {
+        /** Устаревший ключ: читается только для узкой очистки, в AppSettings не входит. */
         val motivator = stringPreferencesKey("motivator_mode")
         val morningEnabled = booleanPreferencesKey("morning_enabled")
         val morningHour = intPreferencesKey("morning_hour")
@@ -92,6 +90,7 @@ class SettingsRepository(private val context: Context) {
         val snooze = intPreferencesKey("default_snooze")
         val lastSync = longPreferencesKey("last_sync_at")
         val userName = stringPreferencesKey("user_name")
+        /** Устаревший ключ: читается только для узкой очистки, в AppSettings не входит. */
         val demoLoaded = booleanPreferencesKey("demo_loaded")
         val reduceAnimations = booleanPreferencesKey("reduce_animations")
 
@@ -140,7 +139,6 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.data.map { prefs -> prefs.contains(LegacyDataStoreCleanup.syncKey) }.first()
 
     private fun Preferences.toAppSettings(): AppSettings = AppSettings(
-        motivatorMode = MotivatorMode.fromKey(this[Keys.motivator] ?: MotivatorMode.ADAPTIVE.key),
         morningReminderEnabled = this[Keys.morningEnabled] ?: true,
         morningReminderHour = this[Keys.morningHour] ?: 9,
         morningReminderMinute = this[Keys.morningMinute] ?: 0,
@@ -150,7 +148,6 @@ class SettingsRepository(private val context: Context) {
         defaultSnoozeMinutes = this[Keys.snooze] ?: 30,
         lastSyncAt = this[Keys.lastSync] ?: 0L,
         userName = this[Keys.userName] ?: "",
-        demoLoaded = this[Keys.demoLoaded] ?: false,
         reduceAnimations = this[Keys.reduceAnimations] ?: false,
         themeId = this[Keys.themeId] ?: "orbit",
         effectIntensity = (this[Keys.effectIntensity] ?: 1f).coerceIn(0f, 1f),
@@ -172,7 +169,9 @@ class SettingsRepository(private val context: Context) {
     )
 
     private fun MutablePreferences.write(next: AppSettings) {
-        this[Keys.motivator] = next.motivatorMode.key
+        // Узкая совместимая очистка устаревших ключей (не ломает старые установки).
+        this.remove(Keys.motivator)
+        this.remove(Keys.demoLoaded)
         this[Keys.morningEnabled] = next.morningReminderEnabled
         this[Keys.morningHour] = next.morningReminderHour
         this[Keys.morningMinute] = next.morningReminderMinute
@@ -182,7 +181,6 @@ class SettingsRepository(private val context: Context) {
         this[Keys.snooze] = next.defaultSnoozeMinutes
         this[Keys.lastSync] = next.lastSyncAt
         this[Keys.userName] = next.userName
-        this[Keys.demoLoaded] = next.demoLoaded
         this[Keys.reduceAnimations] = next.reduceAnimations
         this[Keys.themeId] = next.themeId
         this[Keys.effectIntensity] = next.effectIntensity.coerceIn(0f, 1f)

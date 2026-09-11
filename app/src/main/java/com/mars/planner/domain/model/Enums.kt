@@ -84,18 +84,6 @@ enum class EffectIntensity(val key: String, val labelRu: String, val factor: Flo
     }
 }
 
-enum class MotivatorMode(val key: String, val labelRu: String) {
-    OFF("off", "Выключен"),
-    SOFT("soft", "Мягкий"),
-    ADAPTIVE("adaptive", "Адаптивный"),
-    STRICT("strict", "Строгий");
-
-    companion object {
-        fun fromKey(key: String): MotivatorMode =
-            entries.find { it.key == key } ?: ADAPTIVE
-    }
-}
-
 enum class MarsMood(val assetBase: String) {
     DEFAULT("mars_default"),
     DONE("mars_done"),

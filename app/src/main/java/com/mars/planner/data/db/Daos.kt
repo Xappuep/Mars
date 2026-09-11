@@ -36,9 +36,6 @@ interface ProjectDao {
     @Query("DELETE FROM projects WHERE syncUuid = :uuid")
     suspend fun deleteByUuid(uuid: String)
 
-    @Query("DELETE FROM projects WHERE isDemo = 1")
-    suspend fun deleteDemo()
-
     @Query("DELETE FROM projects")
     suspend fun deleteAll()
 
@@ -101,17 +98,11 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE syncUuid = :uuid")
     suspend fun deleteByUuid(uuid: String)
 
-    @Query("DELETE FROM tasks WHERE isDemo = 1")
-    suspend fun deleteDemo()
-
     @Query("DELETE FROM tasks")
     suspend fun deleteAll()
 
     @Query("SELECT COUNT(*) FROM tasks WHERE isDemo = 0")
     suspend fun countUser(): Int
-
-    @Query("SELECT COUNT(*) FROM tasks WHERE isDemo = 1")
-    suspend fun countDemo(): Int
 }
 
 @Dao

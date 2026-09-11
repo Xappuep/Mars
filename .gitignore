@@ -66,6 +66,10 @@ docs/verification/**/*.txt
 docs/verification/**/*.py
 !docs/verification/V1_FINALIZATION_REPORT.md
 
+# Локальные Gradle-отчёты этапа 9 (не исходники)
+/stage9-*.txt
+/stage9-*.log
+
 # Python
 __pycache__/
 *.pyc

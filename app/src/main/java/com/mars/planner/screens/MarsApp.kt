@@ -80,22 +80,16 @@ import com.mars.planner.domain.logic.TodayTasksSelector
 import com.mars.planner.domain.model.DaySummary
 import com.mars.planner.domain.model.MarsMood
 import com.mars.planner.domain.model.MigrationReport
-import com.mars.planner.domain.model.MotivatorMode
 import com.mars.planner.domain.model.ProjectItem
 import com.mars.planner.domain.model.StatsSnapshot
 import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskStatus
-import com.mars.planner.export.BackupCodec
-import com.mars.planner.export.toAppSettings
-import com.mars.planner.motivator.MarsMotivator
-import com.mars.planner.motivator.MarsReaction
 import com.mars.planner.reminder.ReminderScheduler
 import com.mars.planner.sync.SyncCoordinator
 import com.mars.planner.sync.SyncStepResult
 import com.mars.planner.ui.components.FilterChipRow
 import com.mars.planner.ui.components.MarsBackgroundPresence
-import com.mars.planner.ui.components.MarsPresenceReaction
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.ProvideReduceAnimations
@@ -113,9 +107,7 @@ import com.mars.planner.ui.theme.effects
 import com.mars.planner.ui.theme.rememberSystemReduceMotion
 import com.mars.planner.voice.VoiceInputHelper
 import com.mars.planner.voice.VoiceResult
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -173,25 +165,14 @@ class AppViewModel(
     val pendingSyncCount = planner.observePendingSyncCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    val mood = combine(daySummary, settings) { summary, s ->
-        if (s.motivatorMode == MotivatorMode.OFF) MarsMood.DEFAULT else MoodFromDay.resolve(summary)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MarsMood.DEFAULT)
-
-    var reaction by mutableStateOf<MarsReaction?>(null)
-        private set
+    val mood = daySummary
+        .map { MoodFromDay.resolve(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MarsMood.DEFAULT)
 
     var migrationReport by mutableStateOf<MigrationReport?>(null)
         private set
 
     private var migrationChecked = false
-
-    fun showReaction(value: MarsReaction?) {
-        reaction = value
-    }
-
-    fun clearReaction() {
-        reaction = null
-    }
 
     // ——— Задачи ———
 
@@ -215,18 +196,12 @@ class AppViewModel(
     suspend fun changeStatus(id: Long, status: TaskStatus) {
         val updated = planner.setTaskStatus(id, status) ?: return
         ReminderScheduler.applyTaskReminder(app, updated, settings.value.defaultSnoozeMinutes)
-        reaction = MarsMotivator.reactionForStatusChange(
-            newStatus = status,
-            overdueCount = if (TaskRules.isOverdue(updated.copy(status = TaskStatus.OPEN))) 1 else 0,
-            mode = settings.value.motivatorMode
-        )
     }
 
     /** Перенос срока задачи: новый dueAt либо null (без срока). */
     suspend fun postpone(id: Long, dueAtEpochMillis: Long?) {
         val updated = planner.setTaskDueAt(id, dueAtEpochMillis) ?: return
         ReminderScheduler.applyTaskReminder(app, updated, settings.value.defaultSnoozeMinutes)
-        reaction = MarsMotivator.reactionForPostpone(settings.value.motivatorMode)
     }
 
     fun projectName(uuid: String?): String? {
@@ -252,42 +227,9 @@ class AppViewModel(
         planner.deleteProject(id)
     }
 
-    // ——— Настройки, демо, экспорт ———
+    // ——— Настройки ———
 
     suspend fun updateSettings(transform: (AppSettings) -> AppSettings) = settingsRepo.update(transform)
-
-    suspend fun exportJson(): String {
-        val (tasks, projectList) = planner.exportSnapshot()
-        return BackupCodec.toJson(tasks.filter { !it.isDemo }, projectList.filter { !it.isDemo }, settings.value)
-    }
-
-    suspend fun exportCsv(): String {
-        val (tasks, projectList) = planner.exportSnapshot()
-        return BackupCodec.toCsv(projectList.filter { !it.isDemo }, tasks.filter { !it.isDemo })
-    }
-
-    suspend fun importJson(json: String, replace: Boolean): Int {
-        val payload = BackupCodec.fromJson(json)
-        val models = BackupCodec.toModels(payload)
-        if (replace) {
-            planner.replaceAll(models.projects, models.tasks)
-        } else {
-            planner.mergeImport(models.projects, models.tasks)
-        }
-        payload.settings?.let { dto -> settingsRepo.update { dto.toAppSettings(it) } }
-        sync.rescheduleReminders()
-        return models.tasks.size
-    }
-
-    suspend fun loadDemo() {
-        planner.loadDemo()
-        settingsRepo.update { it.copy(demoLoaded = true) }
-    }
-
-    suspend fun clearDemo() {
-        planner.clearDemo()
-        settingsRepo.update { it.copy(demoLoaded = false) }
-    }
 
     fun stats(): StatsSnapshot = StatsCalculator.compute(allTasks.value)
 
@@ -306,6 +248,8 @@ class AppViewModel(
     }
 
     suspend fun migrationArchiveJson(): String? = planner.exportMigrationArchiveJson()
+
+    suspend fun hasMigrationArchive(): Boolean = planner.hasMigrationArchive()
 
     // ——— Синхронизация «Рубеж» ———
 
@@ -505,8 +449,8 @@ private fun MigrationReportDialog(vm: AppViewModel) {
                 Text("Задач со сроком на 23:59: ${report.dueAt2359Count}", color = palette.text, fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    "Архив старых данных сохранён внутри приложения. Его можно выгрузить " +
-                        "в Настройках → «Архив миграции».",
+                    "Архив старых данных сохранён внутри приложения. При наличии его можно выгрузить " +
+                        "в Настройках → «Восстановление».",
                     color = palette.textMuted,
                     fontSize = 12.sp
                 )
@@ -529,10 +473,8 @@ internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
     val tasks by vm.todayTasks.collectAsState()
     val summary by vm.daySummary.collectAsState()
     val moodByLogic by vm.mood.collectAsState()
-    val settings by vm.settings.collectAsState()
     val pendingSync by vm.pendingSyncCount.collectAsState()
     val conflicts by vm.conflicts.collectAsState()
-    val reaction = vm.reaction
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
     val dateLabel = remember { LocalDate.now().format(ruDateFull) }
     val todayDate = remember { LocalDate.now() }
@@ -547,8 +489,6 @@ internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                 it.assetBase.removePrefix("mars_").equals(raw, ignoreCase = true)
         }
     }
-    val seedScenario = activity?.intent?.getStringExtra("mars_seed")
-    val reactionScenario = activity?.intent?.getStringExtra("mars_reaction")
     val mood = moodOverride ?: moodByLogic
     var voiceMessage by remember { mutableStateOf<String?>(null) }
     val voiceHelper = remember { VoiceInputHelper(context) }
@@ -571,54 +511,8 @@ internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
-    LaunchedEffect(seedScenario) {
-        when (seedScenario) {
-            "demo" -> vm.loadDemo()
-            "done" -> {
-                vm.loadDemo()
-                delay(400)
-                vm.todayTasks.value.filter { it.status != TaskStatus.DONE }.forEach { task ->
-                    vm.changeStatus(task.id, TaskStatus.DONE)
-                }
-                vm.clearReaction()
-            }
-        }
-    }
-
-    LaunchedEffect(reactionScenario, settings.motivatorMode) {
-        when (reactionScenario) {
-            "done" -> {
-                delay(700)
-                vm.showReaction(
-                    MarsMotivator.reactionForStatusChange(TaskStatus.DONE, 0, settings.motivatorMode)
-                )
-            }
-            "postponed" -> {
-                delay(700)
-                vm.showReaction(MarsMotivator.reactionForPostpone(settings.motivatorMode))
-            }
-        }
-    }
-
-    LaunchedEffect(reaction) {
-        if (reaction != null) {
-            delay(2800)
-            vm.clearReaction()
-        }
-    }
-
-    LaunchedEffect(summary.overdue, settings.motivatorMode) {
-        if (summary.overdue >= 2 && settings.motivatorMode != MotivatorMode.OFF && reaction == null) {
-            vm.showReaction(MarsMotivator.reactionForManyOverdue(summary.overdue, settings.motivatorMode))
-        }
-    }
-
-    val displayMood = reaction?.mood ?: moodOverride ?: mood
-    val marsAlpha = when {
-        reaction != null -> 0.82f
-        tasks.isEmpty() -> 0.58f
-        else -> 0.40f
-    }
+    val displayMood = mood
+    val marsAlpha = if (tasks.isEmpty()) 0.58f else 0.40f
     val contentWidth = Modifier.fillMaxWidth(0.64f)
     var marsNudge by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
@@ -741,10 +635,6 @@ internal fun TodayScreen(vm: AppViewModel, nav: NavHostController) {
                             projectName = vm.projectName(task.projectSyncUuid),
                             onClick = { nav.navigate(Routes.detail(task.id)) }
                         )
-                        if (reaction != null && index == 0) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            MarsPresenceReaction(message = reaction.message)
-                        }
                     }
                 }
             }

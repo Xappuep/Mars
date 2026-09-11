@@ -551,54 +551,8 @@ class PlannerRepository(
     suspend fun exportMigrationArchiveJson(): String? =
         sync.latestArchive()?.archiveJson
 
-    suspend fun clearDemo() {
-        tasks.deleteDemo()
-        projects.deleteDemo()
-    }
-
-    suspend fun loadDemo() {
-        if (tasks.countDemo() > 0) return
-        val projectUuid = UUID.randomUUID().toString()
-        val now = System.currentTimeMillis()
-        projects.insert(
-            ProjectEntity(
-                syncUuid = projectUuid,
-                name = "Демо",
-                description = "Демонстрационный проект",
-                createdAt = now,
-                createdAtRawUtc = VersionHash.formatUtc(now),
-                updatedAt = now,
-                isDemo = true
-            )
-        )
-        tasks.insert(
-            TaskEntity(
-                syncUuid = UUID.randomUUID().toString(),
-                title = "Пример открытой задачи",
-                description = "Демо",
-                projectSyncUuid = projectUuid,
-                dueAtEpochMillis = now + 86_400_000L,
-                dueAtRawUtc = VersionHash.formatUtc(now + 86_400_000L),
-                status = TaskStatus.OPEN.key,
-                createdAt = now,
-                createdAtRawUtc = VersionHash.formatUtc(now),
-                updatedAt = now,
-                isDemo = true
-            )
-        )
-        tasks.insert(
-            TaskEntity(
-                syncUuid = UUID.randomUUID().toString(),
-                title = "Пример выполненной задачи",
-                projectSyncUuid = projectUuid,
-                status = TaskStatus.DONE.key,
-                createdAt = now,
-                createdAtRawUtc = VersionHash.formatUtc(now),
-                updatedAt = now,
-                isDemo = true
-            )
-        )
-    }
+    /** Наличие архива миграции: только чтение метаданных строки, без разбора JSON. */
+    suspend fun hasMigrationArchive(): Boolean = sync.latestArchive() != null
 
     suspend fun exportSnapshot(): Pair<List<TaskItem>, List<ProjectItem>> =
         tasks.getAllOnce().map { it.toDomain() } to projects.getAllOnce().map { it.toDomain() }

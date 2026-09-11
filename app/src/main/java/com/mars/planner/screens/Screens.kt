@@ -29,7 +29,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -45,7 +44,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,7 +66,6 @@ import com.mars.planner.domain.logic.TaskStatusToggle
 import com.mars.planner.domain.model.AppTheme
 import com.mars.planner.domain.model.EffectIntensity
 import com.mars.planner.domain.model.MarsMood
-import com.mars.planner.domain.model.MotivatorMode
 import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskStatus
@@ -76,7 +73,6 @@ import com.mars.planner.ui.components.FilterChipRow
 import com.mars.planner.ui.components.MarsBackgroundPresence
 import com.mars.planner.ui.components.MarsChoiceChip
 import com.mars.planner.ui.components.MarsEmptyState
-import com.mars.planner.ui.components.MarsPrimaryButton
 import com.mars.planner.ui.components.MarsSecondaryButton
 import com.mars.planner.ui.components.NewTaskCtaBar
 import com.mars.planner.ui.components.StatusDot
@@ -99,7 +95,6 @@ import com.mars.planner.ui.theme.withTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -575,27 +570,11 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var message by remember { mutableStateOf<String?>(null) }
-    var confirmReplace by remember { mutableStateOf(false) }
-    var pendingImportJson by remember { mutableStateOf<String?>(null) }
-    var importCount by remember { mutableIntStateOf(0) }
-    var confirmClearDemo by remember { mutableStateOf(false) }
     var pendingArchiveJson by remember { mutableStateOf<String?>(null) }
+    var hasMigrationArchive by remember { mutableStateOf(false) }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val json = withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText().orEmpty()
-            }
-            if (json.isBlank()) {
-                message = "Файл пуст"
-                return@launch
-            }
-            importCount = runCatching { com.mars.planner.export.BackupCodec.parseTaskCount(json) }.getOrDefault(0)
-            pendingImportJson = json
-        }
+    LaunchedEffect(Unit) {
+        hasMigrationArchive = vm.hasMigrationArchive()
     }
 
     val archiveLauncher = rememberLauncherForActivityResult(
@@ -721,20 +700,6 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
-        Text("Мотиватор Марса", color = palette.text, fontWeight = FontWeight.SemiBold)
-        MotivatorMode.entries.forEach { mode ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (settings.motivatorMode == mode) palette.accent.copy(0.2f) else palette.card)
-                    .clickable { scope.launch { vm.updateSettings { it.copy(motivatorMode = mode) } } }
-                    .padding(14.dp)
-            ) {
-                Text(mode.labelRu, color = palette.text)
-            }
-        }
-
         MarsSecondaryButton(
             "Образы Марса",
             onClick = { nav.navigate(Routes.MarsImages) },
@@ -760,44 +725,25 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        Text("Данные", color = palette.text, fontWeight = FontWeight.SemiBold)
-        MarsPrimaryButton("Экспорт JSON", onClick = {
-            scope.launch {
-                val json = vm.exportJson()
-                val file = File(context.getExternalFilesDir(null), "mars_backup_${System.currentTimeMillis()}.json")
-                withContext(Dispatchers.IO) { file.writeText(json) }
-                message = "JSON сохранён: ${file.absolutePath}"
-            }
-        })
-        MarsSecondaryButton("Экспорт CSV", onClick = {
-            scope.launch {
-                val csv = vm.exportCsv()
-                val file = File(context.getExternalFilesDir(null), "mars_tasks_${System.currentTimeMillis()}.csv")
-                withContext(Dispatchers.IO) { file.writeText(csv) }
-                message = "CSV сохранён: ${file.absolutePath}"
-            }
-        })
-        MarsSecondaryButton("Импорт JSON", onClick = {
-            importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
-        })
-        MarsSecondaryButton("Выгрузить архив миграции", onClick = {
-            scope.launch {
-                val json = vm.migrationArchiveJson()
-                if (json.isNullOrBlank()) {
-                    message = "Архив миграции отсутствует — перенос данных не выполнялся"
-                } else {
-                    pendingArchiveJson = json
-                    archiveLauncher.launch("mars_migration_archive_${System.currentTimeMillis()}.json")
-                }
-            }
-        })
-        MarsSecondaryButton("Загрузить демо-данные", onClick = {
-            scope.launch {
-                vm.loadDemo()
-                message = "Демо-задачи добавлены"
-            }
-        })
-        MarsSecondaryButton("Очистить демо-данные", onClick = { confirmClearDemo = true })
+        if (hasMigrationArchive) {
+            Text("Восстановление", color = palette.text, fontWeight = FontWeight.SemiBold)
+            MarsSecondaryButton(
+                "Выгрузить архив миграции",
+                onClick = {
+                    scope.launch {
+                        val json = vm.migrationArchiveJson()
+                        if (!json.isNullOrBlank()) {
+                            pendingArchiveJson = json
+                            archiveLauncher.launch("mars_migration_archive_${System.currentTimeMillis()}.json")
+                        } else {
+                            hasMigrationArchive = false
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         Text(
             "Уведомления: если разрешение не выдано, включите его в настройках Android → " +
                 "Приложения → Ежедневник Марса → Уведомления.",
@@ -806,76 +752,6 @@ internal fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         )
         if (message != null) Text(message!!, color = palette.highlight, fontSize = 13.sp)
         Spacer(modifier = Modifier.height(24.dp))
-    }
-
-    if (pendingImportJson != null && !confirmReplace) {
-        AlertDialog(
-            onDismissRequest = { pendingImportJson = null },
-            title = { Text("Импорт: $importCount задач") },
-            text = {
-                Text(
-                    "Объединить с текущими данными или заменить? Замена потребует подтверждения " +
-                        "и создаст локальную резервную копию. Копии Ежедневника v1 будут " +
-                        "преобразованы: категории станут проектами, подзадачи и дополнения — задачами."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val json = pendingImportJson!!
-                    pendingImportJson = null
-                    scope.launch {
-                        val count = vm.importJson(json, replace = false)
-                        message = "Объединено задач: $count"
-                    }
-                }) { Text("Объединить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmReplace = true }) { Text("Заменить…") }
-            }
-        )
-    }
-    if (confirmReplace && pendingImportJson != null) {
-        AlertDialog(
-            onDismissRequest = { confirmReplace = false },
-            title = { Text("Заменить все локальные данные?") },
-            text = { Text("Перед заменой будет создана локальная резервная копия. Это действие нельзя отменить.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val json = pendingImportJson!!
-                    confirmReplace = false
-                    pendingImportJson = null
-                    scope.launch {
-                        val backup = vm.exportJson()
-                        val file = File(context.filesDir, "pre_replace_backup_${System.currentTimeMillis()}.json")
-                        withContext(Dispatchers.IO) { file.writeText(backup) }
-                        val count = vm.importJson(json, replace = true)
-                        message = "Данные заменены ($count задач). Резервная копия: ${file.name}"
-                    }
-                }) { Text("Заменить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmReplace = false }) { Text("Отмена") }
-            }
-        )
-    }
-    if (confirmClearDemo) {
-        AlertDialog(
-            onDismissRequest = { confirmClearDemo = false },
-            title = { Text("Очистить демо?") },
-            text = { Text("Будут удалены только задачи и проекты, помеченные как демо.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClearDemo = false
-                    scope.launch {
-                        vm.clearDemo()
-                        message = "Демо удалено"
-                    }
-                }) { Text("Очистить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClearDemo = false }) { Text("Отмена") }
-            }
-        )
     }
 }
 

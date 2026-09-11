@@ -8,12 +8,10 @@ import com.mars.planner.domain.logic.TaskFiltering
 import com.mars.planner.domain.logic.TaskRules
 import com.mars.planner.domain.logic.TodayTasksSelector
 import com.mars.planner.domain.model.MarsMood
-import com.mars.planner.domain.model.MotivatorMode
 import com.mars.planner.domain.model.TaskFilter
 import com.mars.planner.domain.model.TaskItem
 import com.mars.planner.domain.model.TaskPriority
 import com.mars.planner.domain.model.TaskStatus
-import com.mars.planner.motivator.MarsMotivator
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
@@ -141,29 +139,5 @@ class DomainLogicTest {
             today
         )
         assertThat(MoodFromDay.resolve(manyOverdue)).isEqualTo(MarsMood.STRICT)
-    }
-
-    @Test
-    fun motivatorReactsToDoneAndPostpone() {
-        val done = MarsMotivator.reactionForStatusChange(
-            newStatus = TaskStatus.DONE,
-            overdueCount = 0,
-            mode = MotivatorMode.ADAPTIVE
-        )
-        assertThat(done.mood).isEqualTo(MarsMood.DONE)
-        assertThat(done.message).isNotEmpty()
-
-        val postponed = MarsMotivator.reactionForPostpone(MotivatorMode.ADAPTIVE)
-        assertThat(postponed.message).isNotEmpty()
-    }
-
-    @Test
-    fun motivatorStaysSilentWhenTurnedOff() {
-        val reaction = MarsMotivator.reactionForStatusChange(
-            newStatus = TaskStatus.DONE,
-            overdueCount = 0,
-            mode = MotivatorMode.OFF
-        )
-        assertThat(reaction.message).isEmpty()
     }
 }
