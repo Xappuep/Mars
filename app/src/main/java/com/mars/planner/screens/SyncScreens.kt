@@ -32,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +43,7 @@ import com.mars.planner.domain.model.SyncEntityType
 import com.mars.planner.sync.SyncCallResult
 import com.mars.planner.sync.SyncCoordinator
 import com.mars.planner.sync.SyncErrorCodes
+import com.mars.planner.sync.SyncUiPresentation
 import com.mars.planner.sync.runWithBusyFlag
 import com.mars.planner.ui.components.MarsDangerOutlineButton
 import com.mars.planner.ui.components.MarsPrimaryButton
@@ -56,9 +56,8 @@ import com.mars.planner.ui.theme.ThemeSceneScreen
 import com.mars.planner.ui.theme.ThemeSceneShell
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 
-/** Экран синхронизации с ПК-узлом «Рубеж». Секретов на экране нет. */
+/** Экран синхронизации с ПК-узлом «Рубеж». Секреты на экран не выводятся. */
 @Composable
 internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
     val palette = LocalMarsPalette.current
@@ -67,16 +66,16 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
     val conflicts by vm.conflicts.collectAsState()
     val pairing by vm.pairing.collectAsState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var messageOk by remember { mutableStateOf(true) }
+    var messageOk by remember { mutableStateOf<Boolean?>(null) }
     var showManualQr by remember { mutableStateOf(false) }
     var confirmUnpair by remember { mutableStateOf(false) }
     var snapshotPreview by remember { mutableStateOf<SyncCoordinator.SnapshotPreview?>(null) }
     var snapshotStage by remember { mutableStateOf<String?>(null) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var showTechDetails by remember { mutableStateOf(false) }
 
     fun step(block: suspend () -> Unit) {
         if (busy) return
@@ -85,17 +84,20 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
+    fun applyStepMessage(stepMessage: String, ok: Boolean) {
+        message = stepMessage
+        messageOk = ok
+    }
+
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents
         if (raw.isNullOrBlank()) {
-            message = "Сканирование отменено"
-            messageOk = false
+            applyStepMessage("Сканирование отменено", false)
             return@rememberLauncherForActivityResult
         }
         step {
             val step = vm.startPairing(raw)
-            message = step.message
-            messageOk = step.ok
+            applyStepMessage(step.message, step.ok)
         }
     }
     val cameraPermission = rememberLauncherForActivityResult(
@@ -110,43 +112,78 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     .setOrientationLocked(false)
             )
         } else {
-            message = "Без доступа к камере QR не отсканировать. Можно вставить код вручную."
-            messageOk = false
+            applyStepMessage(
+                "Без доступа к камере QR не отсканировать. Можно вставить код вручную.",
+                false
+            )
         }
     }
 
-    // Пока заявка не подтверждена — тихо опрашиваем ПК.
     LaunchedEffect(pairing.active) {
         while (pairing.active) {
             delay(3_000)
             if (!pairing.active) break
             val step = vm.pollPairStatus()
             if (!step.ok || step.message.contains("Сопряжение выполнено")) {
-                message = step.message
-                messageOk = step.ok
+                applyStepMessage(step.message, step.ok)
             }
         }
     }
 
-    // После перезапуска: незавершённый ACK или повреждённые маркеры.
     LaunchedEffect(settings.syncPaired) {
         if (settings.syncPaired) {
             when (val state = vm.resolvePendingSnapshotAckState()) {
                 is SyncCoordinator.PendingSnapshotAckState.Ready -> {
-                    message = SyncErrorCodes.messageRu(SyncErrorCodes.SNAPSHOT_ACK_PENDING)
-                    messageOk = false
+                    applyStepMessage(
+                        SyncUiPresentation.presentError(SyncErrorCodes.SNAPSHOT_ACK_PENDING).title,
+                        false
+                    )
                 }
                 is SyncCoordinator.PendingSnapshotAckState.Corrupt -> {
-                    message = SyncErrorCodes.messageRu(SyncErrorCodes.SNAPSHOT_STATE_CORRUPT)
-                    messageOk = false
+                    applyStepMessage(
+                        SyncUiPresentation.presentError(SyncErrorCodes.SNAPSHOT_STATE_CORRUPT).title,
+                        false
+                    )
                 }
                 is SyncCoordinator.PendingSnapshotAckState.RequiresFullSnapshot -> {
-                    message = SyncErrorCodes.messageRu(SyncErrorCodes.SNAPSHOT_REQUIRED)
-                    messageOk = false
+                    applyStepMessage(
+                        SyncUiPresentation.presentError(SyncErrorCodes.SNAPSHOT_REQUIRED).title,
+                        false
+                    )
                 }
                 SyncCoordinator.PendingSnapshotAckState.None -> Unit
             }
         }
+    }
+
+    val connection = SyncUiPresentation.connectionStatus(
+        syncPaired = settings.syncPaired,
+        pairingActive = pairing.active,
+        pairedDeviceName = settings.pairedDeviceName,
+        pairedHost = if (pairing.active) pairing.host else settings.pairedHost,
+        pairedPort = if (pairing.active) pairing.port else settings.pairedPort,
+        lastSyncError = settings.lastSyncError,
+        requiresPcPrimarySnapshot = settings.requiresPcPrimarySnapshot,
+        pendingSnapshotAck = settings.pendingSnapshotAckId.isNotBlank()
+    )
+    val exchange = SyncUiPresentation.exchangeStatus(
+        pendingCount = pending,
+        conflictCount = conflicts.size,
+        lastPushAt = settings.lastPushAt,
+        lastPullAt = settings.lastPullAt,
+        busy = busy,
+        busyDetail = snapshotStage,
+        lastActionOk = messageOk,
+        lastActionMessage = message
+    )
+    val storedError = settings.lastSyncError.takeIf { it.isNotBlank() }?.let {
+        SyncUiPresentation.presentError(it)
+    }
+    val connectionAccent = when (connection.kind) {
+        SyncUiPresentation.ConnectionKind.LINKED -> StatusDone
+        SyncUiPresentation.ConnectionKind.AWAITING_PC_CONFIRMATION -> StatusOpen
+        SyncUiPresentation.ConnectionKind.NOT_LINKED,
+        SyncUiPresentation.ConnectionKind.NEEDS_ATTENTION -> StatusOverdue
     }
 
     val syncBody: @Composable ColumnScope.() -> Unit = {
@@ -157,39 +194,70 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(22.dp))
                 .background(palette.card)
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            StatusLine(
-                label = "Сопряжение",
-                value = if (settings.syncPaired) {
-                    settings.pairedDeviceName.ifBlank { "ПК ${settings.pairedHost}" }
-                } else {
-                    "не выполнено"
-                },
-                accent = if (settings.syncPaired) StatusDone else StatusOverdue
+            Text("Состояние связи", color = palette.textMuted, fontSize = 12.sp)
+            Text(
+                connection.title,
+                color = connectionAccent,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
             )
-            if (settings.syncPaired) {
-                StatusLine("Адрес ПК", "${settings.pairedHost}:${settings.pairedPort}")
+            connection.deviceName?.let {
+                Text(it, color = palette.text, fontSize = 14.sp)
             }
-            StatusLine(
-                label = "К отправке",
-                value = if (pending == 0) "нет изменений" else "$pending изменений",
-                accent = if (pending == 0) StatusDone else StatusOpen
+            if (connection.technicalEndpoint != null) {
+                MarsSecondaryButton(
+                    text = if (showTechDetails) "Скрыть технические сведения" else "Технические сведения",
+                    onClick = { showTechDetails = !showTechDetails },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (showTechDetails) {
+                    Text(
+                        "Адрес ПК: ${connection.technicalEndpoint}",
+                        color = palette.textMuted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(22.dp))
+                .background(palette.card)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Обмен данными", color = palette.textMuted, fontSize = 12.sp)
+            Text(exchange.pendingLine, color = palette.text, fontSize = 14.sp)
+            Text(
+                exchange.conflictsLine,
+                color = if (conflicts.isEmpty()) palette.text else StatusOverdue,
+                fontSize = 14.sp
             )
-            StatusLine(
-                label = "Расхождения",
-                value = if (conflicts.isEmpty()) "нет" else "${conflicts.size}",
-                accent = if (conflicts.isEmpty()) StatusDone else StatusOverdue
-            )
-            StatusLine("Отправка", timestampLabel(settings.lastPushAt))
-            StatusLine("Приём", timestampLabel(settings.lastPullAt))
-            if (settings.lastSyncError.isNotBlank()) {
-                StatusLine(
-                    label = "Ошибка",
-                    value = SyncErrorCodes.messageRu(settings.lastSyncError),
-                    accent = StatusOverdue
+            Text(exchange.lastPushLine, color = palette.textMuted, fontSize = 13.sp)
+            Text(exchange.lastPullLine, color = palette.textMuted, fontSize = 13.sp)
+            exchange.busyLine?.let {
+                Text(it, color = StatusOpen, fontSize = 13.sp)
+            }
+            exchange.lastActionLine?.let { line ->
+                Text(
+                    line,
+                    color = when (messageOk) {
+                        true -> palette.highlight
+                        false -> StatusOverdue
+                        null -> palette.textMuted
+                    },
+                    fontSize = 13.sp
                 )
             }
+        }
+
+        storedError?.let { err ->
+            SyncErrorCard(err)
         }
 
         if (pairing.active) {
@@ -200,7 +268,11 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     .background(palette.accent.copy(alpha = 0.16f))
                     .padding(16.dp)
             ) {
-                Text("Ждём подтверждения на ПК", color = palette.text, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Ждём подтверждения на ПК",
+                    color = palette.text,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "Откройте «Рубеж» на ${pairing.host} и нажмите «Разрешить» для этого телефона. " +
@@ -209,18 +281,22 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     fontSize = 13.sp
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MarsSecondaryButton(
                         text = "Проверить сейчас",
                         onClick = {
                             step {
                                 val step = vm.pollPairStatus()
-                                message = step.message
-                                messageOk = step.ok
+                                applyStepMessage(step.message, step.ok)
                             }
-                        }
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    MarsSecondaryButton("Отменить заявку", onClick = { vm.cancelPairing() })
+                    MarsSecondaryButton(
+                        text = "Отменить заявку",
+                        onClick = { vm.cancelPairing() },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -239,46 +315,60 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
         } else {
             val deltaLocked = settings.requiresPcPrimarySnapshot
             if (deltaLocked) {
-                Text(
-                    SyncErrorCodes.messageRu(SyncErrorCodes.SNAPSHOT_REQUIRED),
-                    color = StatusOverdue,
-                    fontSize = 13.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                SyncErrorCard(SyncUiPresentation.presentError(SyncErrorCodes.SNAPSHOT_REQUIRED))
             }
             MarsPrimaryButton(
-                text = if (pending > 0) "Отправить ($pending)" else "Отправить",
+                text = SyncUiPresentation.pushButtonLabel(pending),
                 onClick = {
                     step {
                         val step = vm.pushChanges()
-                        message = step.message
-                        messageOk = step.ok
+                        applyStepMessage(step.message, step.ok)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !busy && !deltaLocked
             )
             MarsSecondaryButton(
-                text = "Получить с ПК",
+                text = "Получить изменения с ПК",
                 onClick = {
                     step {
                         val step = vm.pullChanges()
-                        message = step.message
-                        messageOk = step.ok
+                        applyStepMessage(step.message, step.ok)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !busy && !deltaLocked
             )
+            MarsSecondaryButton(
+                text = "Проверить связь",
+                onClick = {
+                    step {
+                        val step = vm.checkSyncServer()
+                        applyStepMessage(step.message, step.ok)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !busy
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            SyncSectionHeading("Полная копия и восстановление")
+            Text(
+                "Замена данных телефона полной копией с ПК и возврат из резервной копии.",
+                color = palette.textMuted,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             MarsPrimaryButton(
-                text = "Получить полную копию с ПК — данные ПК будут основными",
+                text = "Получить полную копию с ПК",
                 onClick = {
                     step {
                         snapshotStage = "Получение сведений…"
                         when (val prep = vm.preparePcPrimarySnapshot()) {
                             is SyncCallResult.Failure -> {
-                                message = prep.messageRu
-                                messageOk = false
+                                val err = SyncUiPresentation.presentError(prep.code)
+                                applyStepMessage("${err.title}. ${err.action}", false)
                                 snapshotStage = null
                             }
                             is SyncCallResult.Ok -> {
@@ -303,26 +393,13 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     onClick = {
                         step {
                             val step = vm.retryPendingSnapshotAck()
-                            message = step.message
-                            messageOk = step.ok
+                            applyStepMessage(step.message, step.ok)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !busy
                 )
             }
-            MarsSecondaryButton(
-                text = "Проверить связь",
-                onClick = {
-                    step {
-                        val step = vm.checkSyncServer()
-                        message = step.message
-                        messageOk = step.ok
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !busy
-            )
         }
 
         if (conflicts.isNotEmpty()) {
@@ -333,29 +410,30 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+        SyncSectionHeading("Помощь")
         MarsSecondaryButton(
             text = "Инструкция",
             onClick = { nav.navigate(Routes.SyncGuide) },
             modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(modifier = Modifier.height(8.dp))
+        SyncSectionHeading("Сопряжение")
         if (settings.syncPaired) {
             MarsDangerOutlineButton(
                 text = "Разорвать сопряжение",
                 onClick = { confirmUnpair = true },
                 modifier = Modifier.fillMaxWidth()
             )
-        }
-
-        if (busy) Text(snapshotStage ?: "Идёт обмен с ПК…", color = palette.textMuted, fontSize = 13.sp)
-        message?.let {
-            Text(it, color = if (messageOk) palette.highlight else StatusOverdue, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(6.dp))
         }
         Text(
             "Обмен идёт напрямую по домашней Wi-Fi-сети и только с сопряжённым ПК. " +
                 "Ключ доступа хранится в защищённом хранилище телефона и на экране не показывается.",
             color = palette.textMuted,
-            fontSize = 12.sp
+            fontSize = 12.sp,
+            lineHeight = 16.sp
         )
         Spacer(modifier = Modifier.height(24.dp))
     }
@@ -392,8 +470,7 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                 showManualQr = false
                 step {
                     val step = vm.startPairing(raw)
-                    message = step.message
-                    messageOk = step.ok
+                    applyStepMessage(step.message, step.ok)
                 }
             }
         )
@@ -415,8 +492,7 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     confirmUnpair = false
                     step {
                         vm.unpair()
-                        message = "Сопряжение разорвано"
-                        messageOk = true
+                        applyStepMessage("Сопряжение разорвано", true)
                     }
                 }) { Text("Разорвать") }
             },
@@ -459,8 +535,7 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                                     SyncCoordinator.SnapshotStage.DONE -> "Готово"
                                 }
                             }
-                            message = result.message
-                            messageOk = result.ok
+                            applyStepMessage(result.message, result.ok)
                             snapshotStage = null
                         }
                     }
@@ -490,8 +565,7 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
                     confirmRestore = false
                     step {
                         val step = vm.restorePhoneBackup()
-                        message = step.message
-                        messageOk = step.ok
+                        applyStepMessage(step.message, step.ok)
                     }
                 }) { Text("Восстановить") }
             },
@@ -503,11 +577,31 @@ internal fun SyncScreen(vm: AppViewModel, nav: NavHostController) {
 }
 
 @Composable
-private fun StatusLine(label: String, value: String, accent: Color? = null) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        val palette = LocalMarsPalette.current
-        Text(label, color = palette.textMuted, fontSize = 13.sp, modifier = Modifier.width(110.dp))
-        Text(value, color = accent ?: palette.text, fontSize = 13.sp)
+private fun SyncSectionHeading(text: String) {
+    val palette = LocalMarsPalette.current
+    Text(
+        text = text,
+        color = palette.textMuted,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold
+    )
+}
+
+@Composable
+private fun SyncErrorCard(err: SyncUiPresentation.ErrorPresentation) {
+    val palette = LocalMarsPalette.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(StatusOverdue.copy(alpha = 0.12f))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(err.categoryLabel, color = StatusOverdue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(err.title, color = StatusOverdue, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Text(err.explanation, color = palette.text, fontSize = 13.sp)
+        Text(err.action, color = palette.textMuted, fontSize = 12.sp)
     }
 }
 
@@ -557,7 +651,7 @@ internal fun SyncGuideScreen(nav: NavHostController) {
         "На ПК подтвердите заявку: в списке появится название этого телефона, нажмите «Разрешить».",
         "Если на ПК уже есть полная база, а на телефоне ещё нет: нажмите «Получить полную копию с ПК». " +
             "Данные ПК станут основными. Перед заменой телефон покажет счётчики и создаст резервную копию.",
-        "Кнопки «Отправить» и «Получить с ПК» — только для последующих изменений (дельта), " +
+        "Кнопки «Отправить изменения» и «Получить изменения с ПК» — только для последующих изменений, " +
             "они не заменяют первоначальный полный снимок.",
         "Если нужно вернуть задачи телефона после полной копии — «Восстановить резервную копию телефона».",
         "Если задача менялась и там, и там, откройте «Расхождения» и выберите, какую версию оставить."
@@ -598,10 +692,10 @@ internal fun SyncGuideScreen(nav: NavHostController) {
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             HintLine("«ПК недоступен» — проверьте, что «Рубеж» запущен и обе сети одинаковые.")
-            HintLine("«ПК не принял токен» — сопряжение устарело или устройство отозвано; отсканируйте QR заново.")
+            HintLine("«ПК не принял доступ» — сопряжение устарело или устройство отозвано; отсканируйте QR заново.")
             HintLine("«Код сопряжения истёк» — покажите QR-код на ПК заново.")
             HintLine("«Сертификат ПК изменился» — обмен прерван для безопасности, повторите сопряжение.")
-            HintLine("«ПК не поддерживает полный снимок» — обновите «Рубеж» на ПК до версии с corr4.")
+            HintLine("«ПК не умеет отдавать полный снимок» — обновите «Рубеж» на ПК.")
             HintLine("Демо-задачи на ПК не входят в полный снимок и не отправляются в дельте.")
         }
         MarsSecondaryButton(
@@ -622,17 +716,12 @@ private fun HintLine(text: String) {
 /** Разбор расхождений: показываем обе версии и даём выбрать одну. */
 @Composable
 internal fun ConflictsScreen(vm: AppViewModel, nav: NavHostController) {
-    val palette = LocalMarsPalette.current
     val conflicts by vm.conflicts.collectAsState()
     val scope = rememberCoroutineScope()
+    var pendingConfirm by remember { mutableStateOf<ConflictResolveConfirm?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    val body: @Composable ColumnScope.() -> Unit = {
+        val palette = LocalMarsPalette.current
         ScreenTitleRow("Расхождения с ПК", nav)
         if (conflicts.isEmpty()) {
             Text(
@@ -643,7 +732,7 @@ internal fun ConflictsScreen(vm: AppViewModel, nav: NavHostController) {
             )
         } else {
             Text(
-                "Выберите, какую версию оставить. Вторая будет отброшена.",
+                "Сравните версии и выберите, какую оставить. Вторая будет отброшена.",
                 color = palette.textMuted,
                 fontSize = 13.sp
             )
@@ -651,13 +740,97 @@ internal fun ConflictsScreen(vm: AppViewModel, nav: NavHostController) {
         conflicts.forEach { conflict ->
             ConflictCard(
                 conflict = conflict,
-                onKeepPhone = { scope.launch { vm.resolveConflict(conflict.id, keepLocal = true) } },
-                onAcceptPc = { scope.launch { vm.resolveConflict(conflict.id, keepLocal = false) } }
+                onKeepPhone = {
+                    pendingConfirm = ConflictResolveConfirm(
+                        conflictId = conflict.id,
+                        keepLocal = true,
+                        title = SyncUiPresentation.recordTitle(
+                            conflict.localPayloadJson,
+                            conflict.remotePayloadJson
+                        )
+                    )
+                },
+                onAcceptPc = {
+                    pendingConfirm = ConflictResolveConfirm(
+                        conflictId = conflict.id,
+                        keepLocal = false,
+                        title = SyncUiPresentation.recordTitle(
+                            conflict.localPayloadJson,
+                            conflict.remotePayloadJson
+                        )
+                    )
+                }
             )
         }
         Spacer(modifier = Modifier.height(24.dp))
     }
+
+    ThemeSceneShell(
+        screen = ThemeSceneScreen.Sync,
+        fallback = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = body
+            )
+        },
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = body
+            )
+        }
+    )
+
+    pendingConfirm?.let { confirm ->
+        val palette = LocalMarsPalette.current
+        AlertDialog(
+            onDismissRequest = { pendingConfirm = null },
+            containerColor = palette.backgroundElevated,
+            title = {
+                Text(
+                    if (confirm.keepLocal) "Оставить версию телефона?"
+                    else "Принять версию ПК?"
+                )
+            },
+            text = {
+                Text(
+                    if (confirm.keepLocal) {
+                        "Запись «${confirm.title}» останется в версии с телефона. Версия ПК будет отброшена."
+                    } else {
+                        "Запись «${confirm.title}» будет заменена версией с ПК. Версия телефона будет отброшена."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val c = confirm
+                    pendingConfirm = null
+                    scope.launch { vm.resolveConflict(c.conflictId, keepLocal = c.keepLocal) }
+                }) {
+                    Text(if (confirm.keepLocal) "Оставить версию телефона" else "Принять версию ПК")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConfirm = null }) { Text("Отмена") }
+            }
+        )
+    }
 }
+
+private data class ConflictResolveConfirm(
+    val conflictId: Long,
+    val keepLocal: Boolean,
+    val title: String
+)
 
 @Composable
 private fun ConflictCard(
@@ -666,10 +839,13 @@ private fun ConflictCard(
     onAcceptPc: () -> Unit
 ) {
     val palette = LocalMarsPalette.current
-    val typeLabel = when (conflict.entityType) {
-        SyncEntityType.PROJECT -> "Проект"
-        SyncEntityType.TASK -> "Задача"
-    }
+    val compare = SyncUiPresentation.compareConflict(
+        entityTypeTask = conflict.entityType == SyncEntityType.TASK,
+        localPayloadJson = conflict.localPayloadJson,
+        remotePayloadJson = conflict.remotePayloadJson,
+        localOp = conflict.localOp,
+        remoteOp = conflict.remoteOp
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -677,38 +853,85 @@ private fun ConflictCard(
             .background(palette.card)
             .padding(16.dp)
     ) {
-        Text(typeLabel, color = StatusOverdue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            compare.entityTypeLabel,
+            color = StatusOverdue,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = conflictTitle(conflict),
+            text = compare.recordTitle,
             color = palette.text,
             fontWeight = FontWeight.SemiBold,
             fontSize = 16.sp
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Text("Обнаружено ${timestampLabel(conflict.createdAt)}", color = palette.textMuted, fontSize = 12.sp)
+        Text(
+            "Обнаружено ${timestampLabel(conflict.createdAt)}",
+            color = palette.textMuted,
+            fontSize = 12.sp
+        )
+        compare.scenarioNote?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(it, color = StatusOpen, fontSize = 13.sp)
+        }
         Spacer(modifier = Modifier.height(12.dp))
-        ConflictVersion(
+        ConflictVersionBlock(
             title = "Версия телефона",
             accent = StatusOpen,
-            lines = payloadLines(conflict.localPayloadJson, conflict.localOp)
+            deleted = compare.phoneDeleted,
+            opLabel = compare.phoneOpLabel,
+            unreadable = compare.phoneUnreadable,
+            rows = compare.differingRows.map { it.label to it.phoneValue }
         )
         Spacer(modifier = Modifier.height(10.dp))
-        ConflictVersion(
+        ConflictVersionBlock(
             title = "Версия ПК",
             accent = palette.highlight,
-            lines = payloadLines(conflict.remotePayloadJson, conflict.remoteOp)
+            deleted = compare.pcDeleted,
+            opLabel = compare.pcOpLabel,
+            unreadable = compare.pcUnreadable,
+            rows = compare.differingRows.map { it.label to it.pcValue }
         )
+        if (compare.differingRows.isEmpty() &&
+            !compare.phoneDeleted &&
+            !compare.pcDeleted &&
+            !compare.phoneUnreadable &&
+            !compare.pcUnreadable
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Различающихся полей не видно — выберите сторону по действию или получите полную копию с ПК.",
+                color = palette.textMuted,
+                fontSize = 12.sp
+            )
+        }
         Spacer(modifier = Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MarsPrimaryButton("Оставить телефон", onClick = onKeepPhone)
-            MarsSecondaryButton("Принять ПК", onClick = onAcceptPc)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            MarsPrimaryButton(
+                text = "Оставить версию телефона",
+                onClick = onKeepPhone,
+                modifier = Modifier.fillMaxWidth()
+            )
+            MarsSecondaryButton(
+                text = "Принять версию ПК",
+                onClick = onAcceptPc,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
 
 @Composable
-private fun ConflictVersion(title: String, accent: Color, lines: List<Pair<String, String>>) {
+private fun ConflictVersionBlock(
+    title: String,
+    accent: Color,
+    deleted: Boolean,
+    opLabel: String,
+    unreadable: Boolean,
+    rows: List<Pair<String, String>>
+) {
     val palette = LocalMarsPalette.current
     Column(
         modifier = Modifier
@@ -719,59 +942,28 @@ private fun ConflictVersion(title: String, accent: Color, lines: List<Pair<Strin
     ) {
         Text(title, color = accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(6.dp))
-        if (lines.isEmpty()) {
-            Text("Нет данных", color = palette.textMuted, fontSize = 13.sp)
-        }
-        lines.forEach { (label, value) ->
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                Text(label, color = palette.textMuted, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-                Text(value, color = palette.text, fontSize = 12.sp)
+        when {
+            deleted -> Text("Удалено", color = palette.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            unreadable -> Text("Версию не удалось прочитать", color = StatusOverdue, fontSize = 13.sp)
+            else -> {
+                Text("Действие: $opLabel", color = palette.textMuted, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                if (rows.isEmpty()) {
+                    Text("Совпадает по показанным полям", color = palette.textMuted, fontSize = 12.sp)
+                } else {
+                    rows.forEach { (label, value) ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text(label, color = palette.textMuted, fontSize = 12.sp)
+                            Text(
+                                value,
+                                color = palette.text,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
             }
         }
     }
-}
-
-private fun conflictTitle(conflict: SyncConflictItem): String {
-    val payload = conflict.localPayloadJson ?: conflict.remotePayloadJson ?: return "Без названия"
-    val json = runCatching { JSONObject(payload) }.getOrNull() ?: return "Без названия"
-    val title = json.optString("title").ifBlank { json.optString("name") }
-    return title.ifBlank { "Без названия" }
-}
-
-/** Человекочитаемое описание версии из canonical-JSON операции. */
-private fun payloadLines(payloadJson: String?, op: String): List<Pair<String, String>> {
-    if (payloadJson.isNullOrBlank()) {
-        return listOf("Действие" to opLabel(op))
-    }
-    val json = runCatching { JSONObject(payloadJson) }.getOrNull()
-        ?: return listOf("Действие" to opLabel(op))
-    if (json.optBoolean("deleted", false)) {
-        return listOf("Действие" to "удалено")
-    }
-    val lines = mutableListOf<Pair<String, String>>()
-    lines += "Действие" to opLabel(op)
-    json.optString("title").takeIf { it.isNotBlank() }?.let { lines += "Заголовок" to it }
-    json.optString("name").takeIf { it.isNotBlank() }?.let { lines += "Название" to it }
-    json.optString("description").takeIf { it.isNotBlank() }?.let { lines += "Описание" to it }
-    json.optString("status").takeIf { it.isNotBlank() }?.let {
-        lines += "Статус" to if (it == "done") "Выполнено" else "Открыта"
-    }
-    json.optString("priority").takeIf { it.isNotBlank() }?.let {
-        lines += "Приоритет" to when (it) {
-            "low" -> "Низкий"
-            "high" -> "Высокий"
-            else -> "Обычный"
-        }
-    }
-    if (!json.isNull("due_at")) {
-        json.optString("due_at").takeIf { it.isNotBlank() }?.let { lines += "Срок" to it }
-    }
-    if (json.optBoolean("archived", false)) lines += "Архив" to "да"
-    return lines
-}
-
-private fun opLabel(op: String): String = when (op) {
-    "create" -> "создано"
-    "delete" -> "удалено"
-    else -> "изменено"
 }
