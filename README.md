@@ -9,13 +9,13 @@ Android-планировщик на Kotlin (Jetpack Compose + Room), работ�
 Версия приложения: **2.0.0** (`versionCode 3`). Схема базы — 3. Версия протокола обмена с ПК — 1.
 
 > Состояние версии 2.0.0: **этап 8 принят (10.09.2026).**
-> **Этап 9, часть 1 («Проекты» и «Задачи»), часть 2 («Очистка устаревших функций»)
-> и часть 3 («Мобильная адаптация двух тем») приняты по ручной проверке 11.09.2026;
+> **Этап 9, части 1–4 приняты по ручной проверке (11–12.09.2026);
 > ветка `phase/9-mobile-ui-refresh`.**
 > Весь этап 9 не завершён.
 > Это не означает merge в `main`, тег или GitHub Release.
 > Отчёты: `docs/STAGE8_REPORT.md`, `docs/STAGE9_PART1_PROJECTS_TASKS.md`,
-> `docs/STAGE9_PART2_LEGACY_CLEANUP.md`, `docs/STAGE9_PART3_THEMES.md`.
+> `docs/STAGE9_PART2_LEGACY_CLEANUP.md`, `docs/STAGE9_PART3_THEMES.md`,
+> `docs/STAGE9_PART4_THEMES.md`.
 
 ## Модель данных: проекты и задачи
 
@@ -217,5 +217,6 @@ gradlew.bat test
 | `docs/STAGE9_PART1_PROJECTS_TASKS.md` | часть 1: «Проекты» и «Задачи» (принята 11.09.2026) |
 | `docs/STAGE9_PART2_LEGACY_CLEANUP.md` | часть 2: очистка устаревших функций (принята 11.09.2026) |
 | `docs/STAGE9_PART3_THEMES.md` | часть 3: мобильная адаптация двух тем (принята 11.09.2026) |
+| `docs/STAGE9_PART4_THEMES.md` | часть 4: семь утверждённых мобильных фонов (принята 12.09.2026) |
 
 История версий — `CHANGELOG.md`. Чек-лист подписанной сборки версии 1 — `docs/RELEASE_V1_CHECKLIST.md`.

@@ -29,8 +29,9 @@ import com.mars.planner.R
 import com.mars.planner.domain.model.AppTheme
 
 /**
- * Режимы композиции мобильных сценовых тем (этап 9, часть 3 / corr1).
+ * Режимы композиции мобильных сценовых тем (этап 9).
  * Полноэкранный Crop под всем UI заменён явным разделением зон.
+ * Часть 4: все семь утверждённых фонов подключены к одной схеме Hero / CompactHeader / ContentSurface.
  */
 enum class ThemeSceneMode {
     /** «Сегодня»: верхняя художественная зона + рабочая подложка ниже. */
@@ -50,13 +51,13 @@ data class ThemeSceneConfig(
 object ThemeSceneBackgrounds {
 
     fun config(theme: AppTheme): ThemeSceneConfig? = when (theme) {
-        AppTheme.WHITE_STATION -> ThemeSceneConfig(
-            drawableRes = R.drawable.theme_white_station_mobile
-        )
-        AppTheme.LIGHT_CONCRETE -> ThemeSceneConfig(
-            drawableRes = R.drawable.theme_light_concrete_mobile
-        )
-        else -> null
+        AppTheme.ORBIT -> ThemeSceneConfig(drawableRes = R.drawable.theme_orbit_mobile)
+        AppTheme.NEBULA -> ThemeSceneConfig(drawableRes = R.drawable.theme_nebula_mobile)
+        AppTheme.WHITE_STATION -> ThemeSceneConfig(drawableRes = R.drawable.theme_white_station_mobile)
+        AppTheme.ASH_AMBER -> ThemeSceneConfig(drawableRes = R.drawable.theme_ash_amber_mobile)
+        AppTheme.POLAR_NIGHT -> ThemeSceneConfig(drawableRes = R.drawable.theme_polar_night_mobile)
+        AppTheme.LIGHT_CONCRETE -> ThemeSceneConfig(drawableRes = R.drawable.theme_light_concrete_mobile)
+        AppTheme.SHELTER -> ThemeSceneConfig(drawableRes = R.drawable.theme_shelter_terminal_mobile)
     }
 
     fun hasScene(theme: AppTheme): Boolean = config(theme) != null
