@@ -9,15 +9,14 @@ Android-планировщик на Kotlin (Jetpack Compose + Room), работ�
 Версия приложения: **2.0.0** (`versionCode 3`). Схема базы — 3. Версия протокола обмена с ПК — 1.
 
 > Состояние версии 2.0.0: **этап 8 принят (10.09.2026).**
-> **Этап 9, части 1–6 приняты по ручной проверке (11–13.09.2026);
+> **Этап 9 принят по частям 9.1–9.7 (11–13.09.2026);
 > ветка `phase/9-mobile-ui-refresh`.**
-> Части 9.1–9.6 завершены; весь этап 9 не завершён.
-> Следующий пункт: **9.7**.
-> Это не означает merge в `main`, тег или GitHub Release.
+> Части 9.1–9.7 завершены; весь этап 9 принят и завершён в рабочей ветке.
+> Это **не** означает merge в `main`, тег или GitHub Release.
 > Отчёты: `docs/STAGE8_REPORT.md`, `docs/STAGE9_PART1_PROJECTS_TASKS.md`,
 > `docs/STAGE9_PART2_LEGACY_CLEANUP.md`, `docs/STAGE9_PART3_THEMES.md`,
 > `docs/STAGE9_PART4_THEMES.md`, `docs/STAGE9_PART5_SEVEN_THEMES_QA.md`,
-> `docs/STAGE9_PART6_SYNC_UI.md`.
+> `docs/STAGE9_PART6_SYNC_UI.md`, `docs/STAGE9_PART7_RELEASE_READINESS.md`.
 
 ## Модель данных: проекты и задачи
 
@@ -222,5 +221,7 @@ gradlew.bat test
 | `docs/STAGE9_PART4_THEMES.md` | часть 4: семь утверждённых мобильных фонов (принята 12.09.2026) |
 | `docs/STAGE9_PART5_SEVEN_THEMES_QA.md` | часть 5: ручная проверка семи тем (принята 12.09.2026) |
 | `docs/STAGE9_PART6_SYNC_UI.md` | часть 6: интерфейс синхронизации и конфликтов (принята 13.09.2026) |
+| `docs/STAGE9_PART7_RELEASE_READINESS.md` | часть 7: готовность к выпуску 2.0.0 (принята 13.09.2026) |
 
-История версий — `CHANGELOG.md`. Чек-лист подписанной сборки версии 1 — `docs/RELEASE_V1_CHECKLIST.md`.
+История версий — `CHANGELOG.md`. Чек-лист подписанной сборки версии 2.0.0 — `docs/RELEASE_V2_CHECKLIST.md`
+(исторический чек-лист 1.x — `docs/RELEASE_V1_CHECKLIST.md`).
