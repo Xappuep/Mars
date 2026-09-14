@@ -9,14 +9,27 @@ Android-планировщик на Kotlin (Jetpack Compose + Room), работ�
 Версия приложения: **2.0.0** (`versionCode 3`). Схема базы — 3. Версия протокола обмена с ПК — 1.
 
 > Состояние версии 2.0.0: **этап 8 принят (10.09.2026).**
-> **Этап 9 принят по частям 9.1–9.7 (11–13.09.2026);
-> ветка `phase/9-mobile-ui-refresh`.**
-> Части 9.1–9.7 завершены; весь этап 9 принят и завершён в рабочей ветке.
-> Это **не** означает merge в `main`, тег или GitHub Release.
+> **Этап 9 принят и завершён по частям 9.1–9.7 (11–13.09.2026);
+> результат слит в `main` (fast-forward из `phase/9-mobile-ui-refresh`).**
+> Опубликованы аннотированный тег `v2.0.0` и стабильный
+> [GitHub Release Mars 2.0.0](https://github.com/Xappuep/Mars/releases/tag/v2.0.0) (14.09.2026).
 > Отчёты: `docs/STAGE8_REPORT.md`, `docs/STAGE9_PART1_PROJECTS_TASKS.md`,
 > `docs/STAGE9_PART2_LEGACY_CLEANUP.md`, `docs/STAGE9_PART3_THEMES.md`,
 > `docs/STAGE9_PART4_THEMES.md`, `docs/STAGE9_PART5_SEVEN_THEMES_QA.md`,
 > `docs/STAGE9_PART6_SYNC_UI.md`, `docs/STAGE9_PART7_RELEASE_READINESS.md`.
+
+## Стабильный выпуск 2.0.0
+
+| | |
+|--|--|
+| Release | [Mars 2.0.0](https://github.com/Xappuep/Mars/releases/tag/v2.0.0) |
+| Подписанный APK | [Mars-2.0.0-release-signed.apk](https://github.com/Xappuep/Mars/releases/download/v2.0.0/Mars-2.0.0-release-signed.apk) |
+| Размер | 52 493 095 байт |
+| SHA-256 APK | `AE8B0A3B49C199CBC1A516D7DD590ACB62E01F8B2780A0BCB91C262E7B97B88B` |
+| package | `com.mars.planner` |
+| versionName / versionCode | `2.0.0` / `3` |
+| minSdk / targetSdk | 26 / 35 |
+| SHA-256 сертификата | `9F39001CDA5113FBC80F7BEF913E2E4FE4AFEBE20BC2B226FEA761F844E67E5A` |
 
 ## Модель данных: проекты и задачи
 
@@ -112,7 +125,21 @@ Android-планировщик на Kotlin (Jetpack Compose + Room), работ�
 - Для сборки: JDK 17, Android SDK 35
 - Для обмена: ПК с запущенным «Рубежом» в той же локальной сети
 
-## Сборка debug APK
+## Установка APK на телефон
+
+Основной вариант для обычного пользователя — подписанный release из GitHub Release:
+
+1. Скачайте [Mars-2.0.0-release-signed.apk](https://github.com/Xappuep/Mars/releases/download/v2.0.0/Mars-2.0.0-release-signed.apk)
+   со страницы [Release v2.0.0](https://github.com/Xappuep/Mars/releases/tag/v2.0.0).
+2. Разрешите установку из неизвестных источников для браузера или файлового менеджера.
+3. Откройте APK и установите. Для переноса данных 1.x устанавливайте **поверх**, не удаляя приложение
+   `com.mars.planner`.
+4. При первом запуске разрешите **уведомления** (Android 13+), **камеру** — для разового сканирования
+   QR сопряжения, и **микрофон**, если нужен голосовой ввод.
+
+Не устанавливайте unsigned APK из каталога сборки Gradle.
+
+## Сборка debug APK (для разработки)
 
 В корне проекта (Windows):
 
@@ -128,19 +155,12 @@ Unit-тесты:
 gradlew.bat test
 ```
 
-Готовый APK:
+Готовый debug APK:
 
 `app\build\outputs\apk\debug\app-debug.apk`
 
-> Debug-сборка устанавливается с идентификатором `com.mars.planner.debug` (суффикс `-debug` в versionName).
-
-## Установка APK на телефон
-
-1. Скопируйте `app-debug.apk` на устройство.
-2. Разрешите установку из неизвестных источников для файлового менеджера или браузера.
-3. Откройте APK и установите. Для переноса данных 1.x устанавливайте **поверх**, не удаляя приложение.
-4. При первом запуске разрешите **уведомления** (Android 13+), **камеру** — для разового сканирования
-   QR сопряжения, и **микрофон**, если нужен голосовой ввод.
+> Debug-сборка — отдельное приложение `com.mars.planner.debug` (суффикс `-debug` в versionName).
+> Для повседневного использования берите подписанный APK из GitHub Release.
 
 ## Изображения Марса
 
@@ -195,7 +215,8 @@ gradlew.bat test
 - расхождения разбираются вручную, по одной записи; автоматического слияния нет;
 - миграция 1.x → новая модель покрыта только подготовленным инструментальным Room-тестом и требует отдельного запуска на эмуляторе/устройстве;
 - `connectedDebugAndroidTest` не запускался без подключённого изолированного тестового устройства;
-- подписанный release APK не входит в эту версию — только debug-сборка (`com.mars.planner.debug`);
+- подписанный release APK опубликован в [GitHub Release v2.0.0](https://github.com/Xappuep/Mars/releases/tag/v2.0.0)
+  (`Mars-2.0.0-release-signed.apk`, package `com.mars.planner`); debug-сборка остаётся только для разработки;
 - голосовой ввод зависит от системного распознавания речи Android;
 - сроки, перенесённые из 1.x, посчитаны в часовом поясе устройства на момент миграции;
 - legacy `desktop-sync-server` удалён из репозитория в `stage8-corr1`; для синхронизации используется только протокол «Рубеж» v1.
